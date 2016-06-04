@@ -45,7 +45,7 @@ Display* dpy;
 char* displayname;
 Window win, selectionOwner_[2] = {0, 0};
 Time selectionOwnTime_[2] = {0, 0};
-Atom xaCLIPBOARD, xaTIMESTAMP, xaTARGETS;
+Atom xaCLIPBOARD, xaTIMESTAMP, xaTARGETS, xaUTF8_STRING, xaCOMPOUND_TEXT;
 int vncExtEventBase, vncExtErrorBase;
 char* cutText = 0;
 int cutTextLen = 0;
@@ -235,6 +235,16 @@ void handleEvent(XEvent* ev)
       se.selection = ev->xselectionrequest.selection;
       se.time = ev->xselectionrequest.time;
       se.target = ev->xselectionrequest.target;
+
+      debugprint("SelectionRequest.atom: selection=%d, target=%d, property=%d\n",
+		          ev->xselectionrequest.selection,
+    		      ev->xselectionrequest.target,
+    		      ev->xselectionrequest.property);
+      debugprint("SelectionRequest.name: selection=%s, target=%s, property=%s\n",
+      			  XGetAtomName(dpy, ev->xselectionrequest.selection),
+      			  XGetAtomName(dpy, ev->xselectionrequest.target),
+      			  XGetAtomName(dpy, ev->xselectionrequest.property));
+
       if (ev->xselectionrequest.property == None)
         ev->xselectionrequest.property = ev->xselectionrequest.target;
       if (selectionOwner(se.selection) != win) {
@@ -242,21 +252,29 @@ void handleEvent(XEvent* ev)
       } else {
         se.property = ev->xselectionrequest.property;
         if (se.target == xaTARGETS) {
-          Atom targets[2];
+          Atom targets[3];
           targets[0] = xaTIMESTAMP;
           targets[1] = XA_STRING;
+          targets[2] = xaUTF8_STRING;
+          ///targets[3] = xaCOMPOUND_TEXT;
           XChangeProperty(dpy, se.requestor, se.property, XA_ATOM, 32,
-                          PropModeReplace, (unsigned char*)targets, 2);
+                          PropModeReplace,
+                          (unsigned char*)targets, sizeof(targets)/sizeof(targets[0]));
         } else if (se.target == xaTIMESTAMP) {
           Time t = selectionOwnTime(se.selection);
           XChangeProperty(dpy, se.requestor, se.property, XA_INTEGER, 32,
                           PropModeReplace, (unsigned char*)&t, 1);
-        } else if (se.target == XA_STRING) {
-          if (cutText)
-            XChangeProperty(dpy, se.requestor, se.property, XA_STRING, 8,
+        } else if (se.target == XA_STRING ||
+        		    se.target == xaUTF8_STRING/* || // UTF8_STRING
+        		    se.target == xaCOMPOUND_TEXT*/) { // COMPOUND_TEXT
+          if (cutText) {
+            XChangeProperty(dpy, se.requestor, se.property, se.target, 8,
                             PropModeReplace, (unsigned char*)cutText,
                             cutTextLen);
-          else
+            debugprint("SelectionRequest cut text: '%.*s%s'",
+                        cutTextLen < 9 ? cutTextLen : 8, cutText,
+                        cutTextLen < 9 ? "" : "...");
+          } else
             se.property = None;
         } else
           se.property = None;
@@ -344,6 +362,8 @@ int main(int argc, char** argv)
   xaCLIPBOARD = XInternAtom(dpy, "CLIPBOARD", False);
   xaTIMESTAMP = XInternAtom(dpy, "TIMESTAMP", False);
   xaTARGETS = XInternAtom(dpy, "TARGETS", False);
+  xaUTF8_STRING = XInternAtom(dpy, "UTF8_STRING", False);
+  xaCOMPOUND_TEXT = XInternAtom(dpy, "COMPOUND_TEXT", False);
 
   win = XCreateSimpleWindow(dpy, DefaultRootWindow(dpy), 0, 0, 1, 1, 0,
                             WhitePixel(dpy, DefaultScreen(dpy)),

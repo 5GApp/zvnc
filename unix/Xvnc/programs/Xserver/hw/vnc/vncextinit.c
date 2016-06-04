@@ -65,7 +65,6 @@ typedef struct _VncInputSelect {
 static int vncErrorBase = 0;
 static int vncEventBase = 0;
 
-
 void vncExtensionInit(void)
 {
   ExtensionEntry* extEntry;
@@ -226,6 +225,7 @@ static int ProcVncExtGetClientCutText(ClientPtr client)
   WriteToClient(client, sizeof(xVncExtGetClientCutTextReply), (char *)&rep);
   if (clientCutText)
     WriteToClient(client, clientCutTextLen, clientCutText);
+  
   return (client->noClientException);
 }
 
