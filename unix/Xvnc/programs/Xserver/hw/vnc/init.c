@@ -303,8 +303,8 @@ ddxProcessArgument(int argc, char *argv[], int i)
         return 1;
     }
 
-    if (strcasecmp(argv[i], "-nocutbuffersync") == 0) {
-        rfbSyncCutBuffer = FALSE;
+    if (strcasecmp(argv[i], "-cutbuffersync") == 0) {
+        rfbSyncCutBuffer = TRUE;
         return 1;
     }
 
@@ -1474,7 +1474,7 @@ ddxUseMsg()
     ErrorF("-noreverse             disable reverse connections\n");
     ErrorF("-noclipboardsend       disable server->client clipboard synchronization\n");
     ErrorF("-noclipboardrecv       disable client->server clipboard synchronization\n");
-    ErrorF("-nocutbuffersync       disable clipboard synchronization for applications\n");
+    ErrorF("-cutbuffersync         enable clipboard synchronization for applications\n");
     ErrorF("                       that use the (obsolete) X cut buffer\n");
     ErrorF("-maxclipboard B        set max. clipboard transfer size to B bytes\n");
     ErrorF("                       (default: %d)\n", rfbMaxClipboard);
