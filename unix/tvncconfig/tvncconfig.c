@@ -145,10 +145,10 @@ int checkTimeout(void) {
   gettimeofday(&now, 0);
   while (isBefore(now)) {
     if (syncPrimary && selectionOwner(XA_PRIMARY) != win)
-      XConvertSelection(dpy, XA_PRIMARY, XA_STRING,
+      XConvertSelection(dpy, XA_PRIMARY, xaUTF8_STRING,
                         XA_PRIMARY, win, CurrentTime);
     if (selectionOwner(xaCLIPBOARD) != win)
-      XConvertSelection(dpy, xaCLIPBOARD, XA_STRING,
+      XConvertSelection(dpy, xaCLIPBOARD, xaUTF8_STRING,
                         xaCLIPBOARD, win, CurrentTime);
     dueTime = addMillis(dueTime, pollTime);
     if (isBefore(now)) {
@@ -167,7 +167,8 @@ int checkTimeout(void) {
 void selectionNotify(XSelectionEvent* ev, Atom type, int format,
                      int nitems, void* data)
 {
-  if (ev->requestor != win || ev->target != XA_STRING)
+  if (ev->requestor != win ||
+     (ev->target != XA_STRING && ev->target != xaUTF8_STRING))
     return;
 
   if (data && format == 8) {
@@ -208,7 +209,16 @@ void handleEvent(XEvent* ev)
   switch (ev->type) {
 
   case SelectionNotify:
+	debugprint("SelectionNotify.atom: selection=%d, target=%d, property=%d\n",
+			    ev->xselection.selection,
+			    ev->xselection.target,
+			    ev->xselection.property);
+
     if (ev->xselection.property != None) {
+      debugprint("SelectionNotify.name: selection=%s, target=%s, property=%s\n",
+                 XGetAtomName(dpy, ev->xselection.selection),
+                 XGetAtomName(dpy, ev->xselection.target),
+                 XGetAtomName(dpy, ev->xselection.property));
       Atom type;
       int format;
       unsigned long nitems, after;
@@ -216,7 +226,12 @@ void handleEvent(XEvent* ev)
       XGetWindowProperty(dpy, win, ev->xselection.property, 0, 16384, True,
                          AnyPropertyType, &type, &format,
                          &nitems, &after, &data);
+
+      debugprint("SelectionNotify.type.atom: type=%d, format=%d\n", type, format);
+
       if (type != None) {
+    	debugprint("SelectionNotify.type.atom: type=%s\n", XGetAtomName(dpy, type));
+
         selectionNotify(&ev->xselection, type, format, nitems, data);
         XFree(data);
         break;
@@ -309,10 +324,12 @@ void handleEvent(XEvent* ev)
     debugprint("selection change event");
     XVncExtSelectionChangeEvent* selEv = (XVncExtSelectionChangeEvent*)ev;
     if (selEv->selection == xaCLIPBOARD ||
-        (selEv->selection == XA_PRIMARY && syncPrimary)) {
-      if (selectionOwner(selEv->selection) != win)
-        XConvertSelection(dpy, selEv->selection, XA_STRING,
-                          selEv->selection, win, CurrentTime);
+       (selEv->selection == XA_PRIMARY && syncPrimary)) {
+      if (selectionOwner(selEv->selection) != win) {
+        int rv = XConvertSelection(dpy, selEv->selection, xaUTF8_STRING,
+                                   selEv->selection, win, CurrentTime);
+        debugprint("rv:%d\n", rv);
+      }
     }
   }
 }
@@ -373,9 +390,9 @@ int main(int argc, char** argv)
   XVncExtSelectInput(dpy, win, VncExtClientCutTextMask |
                                VncExtSelectionChangeMask);
   if (syncPrimary)
-    XConvertSelection(dpy, XA_PRIMARY, XA_STRING,
+    XConvertSelection(dpy, XA_PRIMARY, xaUTF8_STRING,
                       XA_PRIMARY, win, CurrentTime);
-  XConvertSelection(dpy, xaCLIPBOARD, XA_STRING,
+  XConvertSelection(dpy, xaCLIPBOARD, xaUTF8_STRING,
                     xaCLIPBOARD, win, CurrentTime);
 
   if (pollTime > 0) {
