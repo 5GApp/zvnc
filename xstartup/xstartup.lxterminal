@@ -1,0 +1,6 @@
+#!/bin/bash
+
+openbox-session &
+lxpanel &
+lxterminal &
+
