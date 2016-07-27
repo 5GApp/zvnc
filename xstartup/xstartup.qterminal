@@ -1,6 +1,6 @@
-#!/bin/bash
+#!/bin/sh
 
-openbox-session &
-lxpanel &
+lxqt-session &
+lxqt-panel &
 qterminal &
 
