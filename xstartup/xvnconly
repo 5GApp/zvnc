@@ -434,7 +434,7 @@ unlink($desktopLog);
 if ($opt{'-name'}) {
     $desktopName = $opt{'-name'};
 } else {
-    $desktopName = "TurboVNC: $host:$displayNumber ($ENV{USER})" unless($desktopName);
+    $desktopName = "CloudTop: $host:$displayNumber ($ENV{USER})" unless($desktopName);
 }
 
 # Make an X server cookie - use /dev/urandom on systems that have it,
@@ -481,7 +481,8 @@ $cmd .= " -rfbwait 120000";
 #$cmd .= " -rfbauth $passwdFile" if ($authTypeVNC);
 #$cmd .= " -x509cert $x509CertFile" if ($encTypeX509);
 #$cmd .= " -x509key $x509KeyFile" if ($encTypeX509);
-$cmd .= " -securitytypes $securityTypes" if ($securityTypes);
+#$cmd .= " -securitytypes $securityTypes" if ($securityTypes);
+$cmd .= " -securitytypes none";
 $cmd .= " -rfbport $vncPort";
 $cmd .= " -fp $fontPath" if ($fontPath);
 $cmd .= " -alr ".$autoLosslessRefresh if ($autoLosslessRefresh > 0.0);
