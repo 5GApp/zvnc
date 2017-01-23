@@ -67,4 +67,7 @@ if(TVNC_WINCONSOLE)
 		winmm.lib htmlhelp.lib comctl32.lib)
 endif()
 
-install(TARGETS vncviewer DESTINATION ${TVNC_BINDIR})
+install(TARGETS vncviewer DESTINATION ${CMAKE_INSTALL_BINDIR})
+if(TVNC_WINCONSOLE)
+	install(TARGETS cvncviewer DESTINATION ${CMAKE_INSTALL_BINDIR})
+endif()
