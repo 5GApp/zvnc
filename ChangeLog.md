@@ -1,3 +1,34 @@
+2.1.2
+=====
+
+### Significant changes relative to 2.1.1:
+
+1. Improved the usability of multithreaded Tight encoding in the TurboVNC
+Server:
+
+    - The `TVNC_MT` and `TVNC_NTHREADS` environment variables now have
+corresponding Xvnc command-line options (`-mt` and `-nthreads`), which makes it
+easy to enable multithreaded Tight encoding in TurboVNC Server instances
+spawned by init.d/systemd.
+
+    - The turbovncserver.conf file, which is parsed by the vncserver script,
+now includes two new variables (`$multiThread` and `$numThreads`) that can be
+used to configure multithreading on a system-wide basis or for all TurboVNC
+sessions started under a particular user account.
+
+    - Previously, if multithreaded Tight encoding was enabled, the Tight
+encoder would use as many threads as there were CPU cores on the server, up to
+a maximum of 8.  However, because of limitations in the Tight encoding type,
+using more than 4 threads requires the rfbTightNoZlib extension, which is only
+supported by the TurboVNC Viewer.  To avoid confusion, the TurboVNC Server will
+no longer use more than 4 threads (regardless of the number of CPU cores)
+unless the thread count is explicitly specified.
+
+2. Fixed an issue in the console version of the Windows TurboVNC Viewer
+(cvncviewer.exe) whereby the console output of the viewer could not be
+redirected to a file.
+
+
 2.1.1
 =====
 
@@ -503,19 +534,19 @@ These directives were added to the Windows TurboVNC Viewer in 2.0 beta but were
 left out of the Java viewer due to an oversight.
 
 4. The default xstartup.turbovnc script that the TurboVNC Server creates will
-now launch the Mate desktop on Ubuntu 15, if it is installed and if 3D window
+now launch the MATE desktop on Ubuntu 15, if it is installed and if 3D window
 manager support is not activated.  The GNOME Flashback session under Ubuntu 15
-cannot be made to work properly with TurboVNC, for unknown reasons, but Mate is
+cannot be made to work properly with TurboVNC, for unknown reasons, but MATE is
 a better solution anyhow.
 
 5. The drawing performance of the Java TurboVNC Viewer when running under
 Oracle Java 7 and later on OS X has been dramatically improved (by 3-7x for 2D
 application workloads and 35-50% for 3D application workloads.)  When running
 the standalone TurboVNC Viewer, Apple Java will probably still perform better
-on Macs containing nVidia and Intel HD Graphics GPUs, but on Macs containing
-Intel Iris GPUs, Oracle Java is now the fastest solution (Java 2D is apparently
-not accelerated in Apple Java 6 on these newer GPUs.)  See the User's Guide for
-more details.
+on Macs running OS X 10.9 "Mavericks" and earlier, but on Macs running OS X
+10.10 "Yosemite" and later, Oracle Java is now the fastest solution (Java 2D is
+apparently not accelerated in Apple Java 6 on these more recent OS X
+releases.)  See the User's Guide for more details.
 
 6. Fixed an issue whereby pressing any of the extra buttons on mice with more
 than 3 buttons (Microsoft calls these "X buttons") would cause the Java
