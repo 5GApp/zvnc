@@ -1,0 +1,19 @@
+name: C/C++ CI
+
+on: [push]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-16.04
+    
+    steps:
+    - uses: actions/checkout@v2
+    - name: mkdir
+      run: mkdir build
+    - name: cd
+      run: cd build
+    - name: cmake
+      run: cmake ../
+    - name: make
+      run: make
