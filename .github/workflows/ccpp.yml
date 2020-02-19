@@ -14,6 +14,6 @@ jobs:
     - name: cd
       run: cd build
     - name: cmake
-      run: cmake ../unix
+      run: cmake -G"Unix Makefiles" ../unix
     - name: make
       run: make
