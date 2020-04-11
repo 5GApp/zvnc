@@ -61,7 +61,8 @@ class Log
     Log(int mode = ToDebug, int level = 1, LPTSTR filename = NULL,
         bool append = false);
 
-    inline void Print(int level, LPTSTR format, ...) {
+    inline void Print(int level, LPTSTR format, ...)
+    {
       if (level >= 100) {
         if (level / 100 > m_giiLevel) return;
       } else if (level > m_level) return;
@@ -91,4 +92,4 @@ class Log
     HANDLE hlogfile;
 };
 
-#endif // LOG_H__
+#endif  // LOG_H__

@@ -1,7 +1,7 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
  * Copyright 2011 Pierre Ossman <ossman@cendio.se> for Cendio AB
- * Copyright (C) 2011-2016 D. R. Commander.  All Rights Reserved.
- * Copyright (C) 2011-2013 Brian P. Hinz
+ * Copyright (C) 2011-2018, 2020 D. R. Commander.  All Rights Reserved.
+ * Copyright (C) 2011-2013, 2016 Brian P. Hinz
  *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -24,11 +24,11 @@ package com.turbovnc.vncviewer;
 import java.awt.*;
 import java.awt.event.*;
 import java.awt.Color;
-import java.awt.Graphics;
 import java.awt.Image;
 import java.io.*;
 import java.util.jar.Attributes;
 import java.util.jar.Manifest;
+import java.util.ArrayList;
 import java.util.List;
 import javax.swing.*;
 import java.lang.reflect.*;
@@ -37,23 +37,22 @@ import com.turbovnc.rdr.*;
 import com.turbovnc.rfb.*;
 import com.turbovnc.network.*;
 
-public class VncViewer extends javax.swing.JApplet
-  implements Runnable, ActionListener, OptionsDialogCallback {
-  public static final String PRODUCT_NAME = "TurboVNC Viewer";
-  public static String copyrightYear = null;
-  public static String copyright = null;
-  public static String url = null;
-  public static String version = null;
-  public static String build = null;
-  public static String pkgDate = null;
-  public static String pkgTime = null;
+public class VncViewer implements Runnable, OptionsDialogCallback {
+  static final String PRODUCT_NAME = "TurboVNC Viewer";
+  static String copyrightYear = null;
+  static String copyright = null;
+  static String url = null;
+  static String version = null;
+  static String build = null;
+  static String pkgDate = null;
+  static String pkgTime = null;
 
-  private static final ImageIcon frameIcon =
+  private static final ImageIcon FRAME_ICON =
     new ImageIcon(VncViewer.class.getResource("turbovnc-sm.png"));
-  public static final Image frameImage = frameIcon.getImage();
-  public static final ImageIcon logoIcon =
+  public static final Image FRAME_IMAGE = FRAME_ICON.getImage();
+  public static final ImageIcon LOGO_ICON =
     new ImageIcon(VncViewer.class.getResource("turbovnc.png"));
-  public static final ImageIcon logoIcon128 =
+  public static final ImageIcon LOGO_ICON128 =
     new ImageIcon(VncViewer.class.getResource("turbovnc-128.png"));
 
   void setVersion() {
@@ -102,7 +101,7 @@ public class VncViewer extends javax.swing.JApplet
       int i = -1;
       try {
         i = Integer.parseInt(prop);
-      } catch (NumberFormatException e) {};
+      } catch (NumberFormatException e) {}
       if (i == 1)
         return true;
       if (i == 0)
@@ -111,18 +110,44 @@ public class VncViewer extends javax.swing.JApplet
     return def;
   }
 
-  public static final String os = System.getProperty("os.name").toLowerCase();
+  public static final String OS = System.getProperty("os.name").toLowerCase();
 
   public static boolean isX11() {
-    return !os.startsWith("mac os x") && !os.startsWith("windows");
+    return !OS.startsWith("mac os x") && !OS.startsWith("windows");
   }
 
   public static boolean osEID() {
-    return !os.startsWith("mac os x") && !os.startsWith("windows");
+    return !OS.startsWith("windows");
   }
 
   public static boolean osGrab() {
-    return !os.startsWith("mac os x");
+    return !OS.startsWith("mac os x");
+  }
+
+  public static final int JAVA_VERSION =
+    Integer.parseInt(System.getProperty("java.version").split("\\.")[0]) <= 1 ?
+    Integer.parseInt(System.getProperty("java.version").split("\\.")[1]) :
+    Integer.parseInt(System.getProperty("java.version").split("\\.")[0]);
+
+  public static int getMenuShortcutKeyMask() {
+    Method getMenuShortcutKeyMask;
+    Integer mask = null;
+
+    try {
+      if (JAVA_VERSION >= 10)
+        getMenuShortcutKeyMask =
+          Toolkit.class.getMethod("getMenuShortcutKeyMaskEx");
+      else
+        getMenuShortcutKeyMask =
+          Toolkit.class.getMethod("getMenuShortcutKeyMask");
+      mask =
+        (Integer)getMenuShortcutKeyMask.invoke(Toolkit.getDefaultToolkit());
+    } catch (Exception e) {
+      vlog.error("Could not get menu shortcut key mask:");
+      vlog.error("  " + e.toString());
+    }
+
+    return (mask != null ? mask.intValue() : 0);
   }
 
   // This allows the Mac app to handle .vnc files opened or dragged onto its
@@ -136,10 +161,12 @@ public class VncViewer extends javax.swing.JApplet
         if (method.getName().equals("openFiles") && args[0] != null) {
           synchronized(VncViewer.class) {
             Class ofEventClass =
-              Class.forName("com.apple.eawt.AppEvent$OpenFilesEvent");
+              JAVA_VERSION >= 9 ?
+                Class.forName("java.awt.desktop.OpenFilesEvent") :
+                Class.forName("com.apple.eawt.AppEvent$OpenFilesEvent");
             Method getFiles = ofEventClass.getMethod("getFiles",
                                                      (Class[])null);
-            List<File> files =(List<File>)getFiles.invoke(args[0]);
+            List<File> files = (List<File>)getFiles.invoke(args[0]);
             String fName = files.iterator().next().getAbsolutePath();
             if (nViewers == 0)
               fileName = fName;
@@ -165,24 +192,33 @@ public class VncViewer extends javax.swing.JApplet
   }
 
   static void enableFileHandler() throws Exception {
-    Class appClass = Class.forName("com.apple.eawt.Application");
-    Method getApplication = appClass.getMethod("getApplication",
-                                               (Class[])null);
-    Object app = getApplication.invoke(appClass);
+    Class appClass, fileHandlerClass;
+    Object obj;
 
-    Class fileHandlerClass = Class.forName("com.apple.eawt.OpenFilesHandler");
+    if (JAVA_VERSION >= 9) {
+      appClass = Desktop.class;
+      obj = Desktop.getDesktop();
+      fileHandlerClass = Class.forName("java.awt.desktop.OpenFilesHandler");
+    } else {
+      appClass = Class.forName("com.apple.eawt.Application");
+      Method getApplication = appClass.getMethod("getApplication",
+                                                 (Class[])null);
+      obj = getApplication.invoke(appClass);
+      fileHandlerClass = Class.forName("com.apple.eawt.OpenFilesHandler");
+    }
+
     InvocationHandler handler = new MyInvocationHandler();
     Object proxy = Proxy.newProxyInstance(fileHandlerClass.getClassLoader(),
-                                          new Class[]{fileHandlerClass},
+                                          new Class[]{ fileHandlerClass },
                                           handler);
     Method setOpenFileHandler =
       appClass.getMethod("setOpenFileHandler", fileHandlerClass);
-    setOpenFileHandler.invoke(app, new Object[]{proxy});
+    setOpenFileHandler.invoke(obj, new Object[]{ proxy });
   }
 
   static void setLookAndFeel() {
     try {
-      if (os.startsWith("windows")) {
+      if (OS.startsWith("windows")) {
         String laf = "com.sun.java.swing.plaf.windows.WindowsLookAndFeel";
         UIManager.setLookAndFeel(laf);
       } else {
@@ -198,24 +234,46 @@ public class VncViewer extends javax.swing.JApplet
         }
       }
       UIManager.put("TitledBorder.titleColor", Color.blue);
-      if (os.startsWith("mac os x")) {
+      if (OS.startsWith("mac os x")) {
         System.setProperty("apple.laf.useScreenMenuBar", "true");
         enableFileHandler();
 
         try {
-          Class appClass = Class.forName("com.apple.eawt.Application");
-          Method getApplication =
-            appClass.getMethod("getApplication", (Class[])null);
-          Object app = getApplication.invoke(appClass);
-          Class paramTypes[] = new Class[1];
+          Class appClass;
+          Object obj;
+
+          if (JAVA_VERSION >= 9) {
+            appClass = Class.forName("java.awt.Taskbar");
+            Method getTaskbar =
+              appClass.getMethod("getTaskbar", (Class[])null);
+            obj = getTaskbar.invoke(appClass);
+          } else {
+            appClass = Class.forName("com.apple.eawt.Application");
+            Method getApplication =
+              appClass.getMethod("getApplication", (Class[])null);
+            obj = getApplication.invoke(appClass);
+          }
+
+          Class[] paramTypes = new Class[1];
           paramTypes[0] = Image.class;
-          Method setDockIconImage =
+          Method setDockIconImage = JAVA_VERSION >= 9 ?
+            appClass.getMethod("setIconImage", paramTypes) :
             appClass.getMethod("setDockIconImage", paramTypes);
-          setDockIconImage.invoke(app, logoIcon128.getImage());
+          setDockIconImage.invoke(obj, LOGO_ICON128.getImage());
         } catch (Exception e) {
           vlog.debug("Could not set OS X dock icon:");
           vlog.debug("  " + e.toString());
         }
+        // This allows us to trap Command-Q and shut things down properly.
+        Runtime.getRuntime().addShutdownHook(new Thread() {
+          public void run() {
+            synchronized(VncViewer.conns) {
+              for (CConn cc : VncViewer.conns)
+                cc.close(false);
+              VncViewer.conns.clear();
+            }
+          }
+        });
       }
 
       // Set the shared frame's icon, which will be inherited by any ownerless
@@ -223,7 +281,7 @@ public class VncViewer extends javax.swing.JApplet
       JDialog dlg = new JDialog();
       Object owner = dlg.getOwner();
       if (owner instanceof Frame && owner != null)
-        ((Frame)owner).setIconImage(frameImage);
+        ((Frame)owner).setIconImage(FRAME_IMAGE);
       dlg.dispose();
 
     } catch (Exception e) {
@@ -245,40 +303,40 @@ public class VncViewer extends javax.swing.JApplet
       //    subsequent calls to getInsets().
       // Thus, we have to compute the insets globally using a dummy JFrame.
       // Dear Swing, eff ewe.
-      if (!embed.getValue()) {
-        final JFrame frame = new JFrame();
-        // Under certain Linux WM's, the insets aren't valid until
-        // componentResized() is called (see above.)
-        if (isX11()) {
-          frame.addComponentListener(new ComponentAdapter() {
-            public void componentResized(ComponentEvent e) {
-              synchronized(frame) {
-                if (frame.isVisible() && frame.getExtendedState() == JFrame.NORMAL) {
-                  insets = frame.getInsets();
-                  frame.notifyAll();
-                }
+      final JFrame frame = new JFrame();
+      // Under certain Linux WM's, the insets aren't valid until
+      // componentResized() is called (see above.)
+      if (isX11()) {
+        frame.addComponentListener(new ComponentAdapter() {
+          public void componentResized(ComponentEvent e) {
+            synchronized(frame) {
+              if (frame.isVisible() &&
+                  frame.getExtendedState() == JFrame.NORMAL) {
+                insets = frame.getInsets();
+                frame.notifyAll();
               }
             }
-          });
-          frame.setExtendedState(JFrame.NORMAL);
-          frame.setVisible(true);
-          synchronized(frame) {
-            while (insets == null)
-              frame.wait();
           }
-          frame.setVisible(false);
-        } else {
-          frame.setVisible(true);
-          insets = frame.getInsets();
-          frame.setVisible(false);
+        });
+        frame.setExtendedState(JFrame.NORMAL);
+        frame.setVisible(true);
+        synchronized(frame) {
+          while (insets == null)
+            frame.wait();
         }
-        frame.dispose();
+        frame.setVisible(false);
+      } else {
+        frame.setVisible(true);
+        insets = frame.getInsets();
+        frame.setVisible(false);
       }
+      frame.dispose();
     } catch (Exception e) {
       vlog.error("Could not set insets:");
       vlog.error("  " + e.toString());
     }
   }
+
   public static void setBlitterDefaults() {
     // Java 1.7 and later do not include hardware-accelerated 2D blitting
     // routines on Mac platforms.  They only support OpenGL blitting, and using
@@ -287,10 +345,8 @@ public class VncViewer extends javax.swing.JApplet
     // on certain models.)
     boolean defForceAlpha = false;
 
-    if (os.startsWith("mac os x")) {
-      int minorVersion =
-        Integer.parseInt(System.getProperty("java.version").split("\\.")[1]);
-      if (minorVersion >= 7)
+    if (OS.startsWith("mac os x")) {
+      if (JAVA_VERSION >= 7)
         defForceAlpha = true;
     }
     // TYPE_INT_ARGB_PRE images are also faster when using OpenGL blitting on
@@ -308,7 +364,7 @@ public class VncViewer extends javax.swing.JApplet
     // default.  Note that this doesn't work with Java 1.6 and earlier, for
     // unknown reasons.  Apparently it reads the Java 2D system properties
     // before our code can influence them.
-    if (os.startsWith("windows")) {
+    if (OS.startsWith("windows")) {
       String prop = System.getProperty("sun.java2d.d3d");
       if (prop == null || prop.length() < 1 || !Boolean.parseBoolean(prop))
         System.setProperty("sun.java2d.d3d", "false");
@@ -327,7 +383,7 @@ public class VncViewer extends javax.swing.JApplet
   public static void main(String[] argv) {
     setLookAndFeel();
     VncViewer viewer = new VncViewer(argv);
-    if (os.startsWith("mac os x")) {
+    if (OS.startsWith("mac os x")) {
       synchronized(VncViewer.class) {
         if (fileName != null) {
           try {
@@ -345,8 +401,6 @@ public class VncViewer extends javax.swing.JApplet
   }
 
   public VncViewer(String[] argv) {
-    applet = false;
-
     UserPreferences.load("global");
 
     setVersion();
@@ -362,7 +416,8 @@ public class VncViewer extends javax.swing.JApplet
         if (++i < argv.length) {
           if (!argv[i].equalsIgnoreCase(System.getProperty("os.arch"))) {
             reportException(new WarningException("You must use a " +
-              argv[i] + " Java Runtime Environment with this version of TurboVNC."));
+              argv[i] +
+              " Java Runtime Environment with this version of TurboVNC."));
             exit(1);
           }
         }
@@ -383,7 +438,11 @@ public class VncViewer extends javax.swing.JApplet
       if (argv[i].equalsIgnoreCase("-loglevel")) {
         if (++i >= argv.length) usage();
         System.err.println("Log setting: " + argv[i]);
-        LogWriter.setLogParams(argv[i]);
+        if (!LogWriter.setLogParams(argv[i])) {
+          reportException(
+            new WarningException("Invalid logging level specified"));
+          exit(1);
+        }
         continue;
       }
 
@@ -392,8 +451,9 @@ public class VncViewer extends javax.swing.JApplet
           try {
             benchFile = new FileInStream(argv[++i]);
           } catch (Exception e) {
-            reportException(new WarningException("Could not open session capture:\n" +
-                                                 e.getMessage()));
+            reportException(
+              new WarningException("Could not open session capture:\n" +
+                                   e.getMessage()));
             exit(1);
           }
         }
@@ -445,50 +505,42 @@ public class VncViewer extends javax.swing.JApplet
     }
 
     setGlobalOptions();
-
-    embed.setParam(false);
   }
 
   public static void usage() {
-    String usage = ("\n" +
-                    "USAGE: VncViewer [options/parameters] [host:displayNum] [options/parameters]\n" +
-                    "       VncViewer [options/parameters] [host::port] [options/parameters]\n" +
-                    "       VncViewer [options/parameters] -listen [port] [options/parameters]\n" +
-                    "\n" +
-                    "Options:\n" +
-                    "  -loglevel <level>   configure logging level\n" +
-                    "                      0 = errors only\n" +
-                    "                      10 = status messages\n" +
-                    "                      30 = informational messages (default)\n" +
-                    "                      100 = debugging messages\n" +
-                    "\n" +
-                    "Specifying boolean parameters:\n" +
-                    "  On:   -<param>=1 or -<param>\n" +
-                    "  Off:  -<param>=0 or -no<param>\n" +
-                    "Parameters that take a value can be specified as:\n" +
-                    "  -<param> <value> or <param>=<value> or -<param>=<value> or --<param>=<value>\n" +
-                    "Parameter names and values are case-insensitive (except for the value of\n" +
-                    "Password.)\n\n" +
-                    "The parameters are:\n\n");
-    System.err.println("\nTurboVNC Viewer v" + version + " (build " + build +
+    String usage = "\n" +
+      "USAGE: VncViewer [options/parameters] [host:displayNum] [options/parameters]\n" +
+      "       VncViewer [options/parameters] [host::port] [options/parameters]\n" +
+      "       VncViewer [options/parameters] -listen [port] [options/parameters]\n" +
+      "\n" +
+      "Options:\n" +
+      "  -loglevel <level>   configure logging level\n" +
+      "                      0 = errors only\n" +
+      "                      10 = status messages\n" +
+      "                      30 = informational messages (default)\n" +
+      "                      100 = debugging messages\n" +
+      "                      110 = SSH debugging messages\n" +
+      "                      150 = extended input device debugging messages\n" +
+      "\n" +
+      "Specifying boolean parameters:\n" +
+      "  On:   -<param>=1 or -<param>\n" +
+      "  Off:  -<param>=0 or -no<param>\n" +
+      "Parameters that take a value can be specified as:\n" +
+      "  -<param> <value> or <param>=<value> or -<param>=<value> or --<param>=<value>\n" +
+      "Parameter names and values are case-insensitive (except for the value of\n" +
+      "Password.)\n\n" +
+      "The parameters are:\n\n";
+    System.out.println("\nTurboVNC Viewer v" + version + " (build " + build +
                        ") [JVM: " + System.getProperty("os.arch") + "]");
-    System.err.println("Copyright (C) " + copyrightYear + " " + copyright);
-    System.err.println(url);
-    System.err.print(usage);
+    System.out.println("Copyright (C) " + copyrightYear + " " + copyright);
+    System.out.println(url);
+    System.out.print(usage);
     Configuration.listParams(80);
     System.exit(1);
   }
 
-  public VncViewer() {
-    applet = true;
-    UserPreferences.load("global");
-    setVersion();
-    setGlobalOptions();
-  }
-
   public VncViewer(Socket sock_) {
     sock = sock_;
-    UserPreferences.load("global");
     opts.serverName = null;
     opts.port = -1;
   }
@@ -506,35 +558,9 @@ public class VncViewer extends javax.swing.JApplet
       newViewer(oldViewer, null, false);
   }
 
-  public void init() {
-    vlog.debug("init called");
-    Container parent = getParent();
-    while (!parent.isFocusCycleRoot()) {
-      parent = parent.getParent();
-    }
-    parent.setFocusable(false);
-    parent.setFocusTraversalKeysEnabled(false);
-    setLookAndFeel();
-    setBackground(Color.white);
-  }
-
   public void start() {
     vlog.debug("start called");
-    String host = null;
-    if (applet && nViewers == 0) {
-      Configuration.readAppletParams(this);
-      if (embed.getValue()) {
-        fullScreen.setParam(false);
-        noNewConn.setParam(true);
-        scalingFactor.setParam("100");
-      }
-      String str = getParameter("LogLevel");
-      if (str != null)
-        LogWriter.setLogParams(str);
-      setGlobalOptions();
-      host = opts.serverName;
-    } else if (!applet)
-      host = opts.serverName;
+    String host = opts.serverName;
     if (host != null && host.indexOf(':') < 0 &&
         opts.port > 0) {
       opts.serverName = host + ((opts.port >= 5900 && opts.port <= 5999) ?
@@ -548,19 +574,9 @@ public class VncViewer extends javax.swing.JApplet
   public void exit(int n) {
     if (nViewers > 0)
       nViewers--;
-    if (nViewers > 0 || embed.getValue())
+    if (nViewers > 0)
       return;
-    if (applet) {
-      destroy();
-    } else {
-      System.exit(n);
-    }
-  }
-
-  // If "Reconnect" button is pressed
-  public void actionPerformed(ActionEvent e) {
-    getContentPane().removeAll();
-    start();
+    System.exit(n);
   }
 
   void reportException(Exception e) {
@@ -572,49 +588,36 @@ public class VncViewer extends javax.swing.JApplet
     if (e instanceof WarningException) {
       msgType = JOptionPane.WARNING_MESSAGE;
       title = "TurboVNC Viewer";
-      System.out.println(msg);
+      System.err.println(msg);
     } else if (e instanceof ErrorException) {
       title = "TurboVNC Viewer : Error";
-      System.out.println(msg);
+      System.err.println(msg);
+    } else if (e instanceof SystemException) {
+      Throwable cause = e.getCause();
+      while (cause instanceof SystemException && cause.getCause() != null)
+        cause = cause.getCause();
+      msg = cause.toString();
+      title = "TurboVNC Viewer : Unexpected Error";
+      cause.printStackTrace();
     } else {
-      if (!(e instanceof SystemException))
-        msg = e.toString();
+      msg = e.toString();
       title = "TurboVNC Viewer : Unexpected Error";
       e.printStackTrace();
     }
-    if (embed.getValue()) {
-      getContentPane().removeAll();
-      JLabel label = new JLabel("<html><center><b>" + title + "</b><p><i>" +
-                                msg + "</i></center></html>", JLabel.CENTER);
-      label.setFont(new Font("Helvetica", Font.PLAIN, 24));
-      label.setMaximumSize(new Dimension(getSize().width, 100));
-      label.setVerticalAlignment(JLabel.CENTER);
-      label.setAlignmentX(Component.CENTER_ALIGNMENT);
-      JButton button = new JButton("Reconnect");
-      button.addActionListener(this);
-      button.setMaximumSize(new Dimension(200, 30));
-      button.setAlignmentX(Component.CENTER_ALIGNMENT);
-      setLayout(new BoxLayout(getContentPane(), BoxLayout.Y_AXIS));
-      add(label);
-      add(button);
-      validate();
-      repaint();
-    } else {
-      JOptionPane pane;
-      Object[] options = { UIManager.getString("OptionPane.yesButtonText"),
-                           UIManager.getString("OptionPane.noButtonText") };
-      if (reconnect)
-        pane = new JOptionPane(msg + "\nReconnect?", msgType,
-                               JOptionPane.YES_NO_OPTION, null, options,
-                               options[1]);
-      else
-        pane = new JOptionPane(msg, msgType);
-      JDialog dlg = pane.createDialog(null, title);
-      dlg.setAlwaysOnTop(true);
-      dlg.setVisible(true);
-      if (reconnect && pane.getValue() == options[0])
-        start();
-    }
+    JOptionPane pane;
+    Object[] dlgOptions = { UIManager.getString("OptionPane.yesButtonText"),
+                            UIManager.getString("OptionPane.noButtonText") };
+    if (reconnect)
+      pane = new JOptionPane(msg + "\nReconnect?", msgType,
+                             JOptionPane.YES_NO_OPTION, null, dlgOptions,
+                             dlgOptions[1]);
+    else
+      pane = new JOptionPane(msg, msgType);
+    JDialog dlg = pane.createDialog(null, title);
+    dlg.setAlwaysOnTop(true);
+    dlg.setVisible(true);
+    if (reconnect && pane.getValue() == dlgOptions[0])
+      start();
   }
 
   static void showAbout(Component comp) {
@@ -628,10 +631,8 @@ public class VncViewer extends javax.swing.JApplet
       "Copyright (C) " + VncViewer.copyrightYear + " " + VncViewer.copyright +
         "\n" +
       VncViewer.url, JOptionPane.INFORMATION_MESSAGE);
-    pane.setIcon(VncViewer.logoIcon128);
+    pane.setIcon(LOGO_ICON128);
     JDialog dlg = pane.createDialog(comp, "About TurboVNC Viewer");
-    if (VncViewer.embed.getValue())
-      dlg.setAlwaysOnTop(true);
     dlg.setVisible(true);
   }
 
@@ -654,9 +655,11 @@ public class VncViewer extends javax.swing.JApplet
     setTightOptions();
 
     options.viewOnly.setSelected(opts.viewOnly);
-    options.acceptClipboard.setSelected(opts.acceptClipboard);
+    options.reverseScroll.setSelected(opts.reverseScroll);
+    options.fsAltEnter.setSelected(opts.fsAltEnter);
+    options.recvClipboard.setSelected(opts.recvClipboard);
     options.sendClipboard.setSelected(opts.sendClipboard);
-    options.menuKey.setSelectedItem(KeyEvent.getKeyText(MenuKey.getMenuKeyCode()));
+    options.menuKey.setSelectedItem(KeyEvent.getKeyText(opts.menuKeyCode));
     if (VncViewer.osGrab() && Viewport.isHelperAvailable())
       options.grabKeyboard.setSelectedIndex(opts.grabKeyboard);
 
@@ -668,7 +671,7 @@ public class VncViewer extends javax.swing.JApplet
     options.span.setSelectedIndex(opts.span);
     options.cursorShape.setSelected(opts.cursorShape);
     options.acceptBell.setSelected(opts.acceptBell);
-    options.showToolbar.setSelected(VncViewer.showToolbar.getValue());
+    options.showToolbar.setSelected(opts.showToolbar);
     if (opts.scalingFactor == Options.SCALE_AUTO) {
       options.scalingFactor.setSelectedItem("Auto");
     } else if (opts.scalingFactor == Options.SCALE_FIXEDRATIO) {
@@ -681,11 +684,10 @@ public class VncViewer extends javax.swing.JApplet
       options.scalingFactor.setEnabled(false);
     } else if (opts.desktopSize.mode == Options.SIZE_SERVER) {
       options.desktopSize.setSelectedItem("Server");
-      options.scalingFactor.setEnabled(!VncViewer.embed.getValue());
+      options.scalingFactor.setEnabled(true);
     } else {
-      options.desktopSize.setSelectedItem(opts.desktopSize.width + "x" +
-                                          opts.desktopSize.height);
-      options.scalingFactor.setEnabled(!VncViewer.embed.getValue());
+      options.desktopSize.setSelectedItem(opts.desktopSize.getString());
+      options.scalingFactor.setEnabled(true);
     }
 
     options.gateway.setEnabled(false);
@@ -704,20 +706,25 @@ public class VncViewer extends javax.swing.JApplet
     opts.subsampling = options.getSubsamplingLevel();
     opts.sendLocalUsername = options.sendLocalUsername.isSelected();
     opts.viewOnly = options.viewOnly.isSelected();
-    opts.acceptClipboard = options.acceptClipboard.isSelected();
+    opts.reverseScroll = options.reverseScroll.isSelected();
+    opts.fsAltEnter = options.fsAltEnter.isSelected();
+    opts.recvClipboard = options.recvClipboard.isSelected();
     opts.sendClipboard = options.sendClipboard.isSelected();
     opts.acceptBell = options.acceptBell.isSelected();
-    VncViewer.showToolbar.setParam(options.showToolbar.isSelected());
+    opts.showToolbar = options.showToolbar.isSelected();
 
     opts.setScalingFactor(options.scalingFactor.getSelectedItem().toString());
     opts.setDesktopSize(options.desktopSize.getSelectedItem().toString());
+    opts.fullScreen = options.fullScreen.isSelected();
 
     int index = options.span.getSelectedIndex();
     if (index >= 0 && index < Options.NUMSPANOPT)
       opts.span = index;
 
-    VncViewer.menuKey.setParam(
-      MenuKey.getMenuKeySymbols()[options.menuKey.getSelectedIndex()].name);
+    opts.menuKeyCode =
+      MenuKey.getMenuKeySymbols()[options.menuKey.getSelectedIndex()].keycode;
+    opts.menuKeySym =
+      MenuKey.getMenuKeySymbols()[options.menuKey.getSelectedIndex()].keysym;
 
     if (VncViewer.osGrab() && Viewport.isHelperAvailable())
       opts.grabKeyboard = options.grabKeyboard.getSelectedIndex();
@@ -792,8 +799,14 @@ public class VncViewer extends javax.swing.JApplet
       double tStart = 0.0, tTotal;
 
       try {
-        if (cc == null)
+        if (cc == null) {
           cc = new CConn(this, sock);
+          if (OS.startsWith("mac os x") && benchFile == null) {
+            synchronized(conns) {
+              conns.add(cc);
+            }
+          }
+        }
         if (benchFile != null) {
           if (i < benchWarmup)
             System.out.format("Benchmark warmup run %d\n", i + 1);
@@ -843,10 +856,12 @@ public class VncViewer extends javax.swing.JApplet
                           cc.state() == CConnection.RFBSTATE_NORMAL &&
                           !VncViewer.noReconnect.getValue());
           exitStatus = 1;
-          if (cc != null) cc.deleteWindow();
-        } else if (cc.shuttingDown && embed.getValue()) {
-          reportException(new WarningException("Connection closed"));
+          if (cc != null) {
+            cc.deleteWindow(true);
+            cc.closeSocket();
+          }
         } else {
+          cc.closeSocket();
           cc = null;
         }
       }
@@ -864,118 +879,137 @@ public class VncViewer extends javax.swing.JApplet
   void setGlobalOptions() {
     try {
 
-    if (opts == null)
-      opts = new Options();
+      if (opts == null)
+        opts = new Options();
 
-    opts.port = vncServerPort.getValue();
-    vncServerPort.setValue(-1);
+      // CONNECTION OPTIONS
+      opts.continuousUpdates = continuousUpdates.getValue();
+      opts.port = vncServerPort.getValue();
+      vncServerPort.setValue(-1);
+      opts.recvClipboard = recvClipboard.getValue();
+      opts.sendClipboard = sendClipboard.getValue();
+      opts.shared = shared.getValue();
 
-    opts.shared = shared.getValue();
-    opts.viewOnly = viewOnly.getValue();
-    opts.fullScreen = fullScreen.getValue();
-
-    if (osGrab()) {
-      if (grabKeyboard.getValue().toLowerCase().startsWith("f"))
-        opts.grabKeyboard = Options.GRAB_FS;
-      else if (grabKeyboard.getValue().toLowerCase().startsWith("a"))
-        opts.grabKeyboard = Options.GRAB_ALWAYS;
-      else if (grabKeyboard.getValue().toLowerCase().startsWith("m"))
-        opts.grabKeyboard = Options.GRAB_MANUAL;
-    }
-
-    if (span.getValue().toLowerCase().startsWith("p"))
-      opts.span = Options.SPAN_PRIMARY;
-    else if (span.getValue().toLowerCase().startsWith("al"))
-      opts.span = Options.SPAN_ALL;
-    else
-      opts.span = Options.SPAN_AUTO;
-
-    opts.scalingFactor = Integer.parseInt(scalingFactor.getDefaultStr());
-
-    if (benchFile != null)
-      opts.desktopSize.mode = Options.SIZE_SERVER;
-    else {
-      Options.DesktopSize size =
-        Options.parseDesktopSize(desktopSize.getValue());
-      if (size == null)
-        throw new ErrorException("DesktopSize parameter is incorrect");
-      opts.desktopSize = size;
-    }
-
-    opts.setScalingFactor(scalingFactor.getValue());
-    if (opts.scalingFactor != 100 &&
-        opts.desktopSize.mode == Options.SIZE_AUTO) {
-      vlog.info("Desktop scaling enabled.  Disabling automatic desktop resizing.");
-      opts.desktopSize.mode = Options.SIZE_SERVER;
-    }
-
-    opts.acceptClipboard = acceptClipboard.getValue();
-    opts.sendClipboard = sendClipboard.getValue();
-    opts.acceptBell = acceptBell.getValue();
-
-    String encStr = preferredEncoding.getValue();
-    int encNum = Encodings.encodingNum(encStr);
-    if (encNum != -1)
-      opts.preferredEncoding = encNum;
-    else
-      opts.preferredEncoding =
-        Encodings.encodingNum(preferredEncoding.getDefaultStr());
-
-    opts.allowJpeg = allowJpeg.getValue();
-    opts.quality = quality.getValue();
-
-    opts.subsampling = Options.SUBSAMP_NONE;
-    switch (subsampling.getValue().toUpperCase().charAt(0)) {
-      case '2':
-        opts.subsampling = Options.SUBSAMP_2X;
-        break;
-      case '4':
-        opts.subsampling = Options.SUBSAMP_4X;
-        break;
-      case 'G':
-        opts.subsampling = Options.SUBSAMP_GRAY;
-        break;
-    }
-
-    opts.compressLevel = compressLevel.getValue();
-
-    opts.colors = -1;
-    switch (colors.getValue()) {
-      case 8:  case 64:  case 256:  case 32768:  case 65536:
-        opts.colors = colors.getValue();
-        break;
-    }
-
-    opts.cursorShape = cursorShape.getValue();
-    opts.continuousUpdates = continuousUpdates.getValue();
-    opts.copyRect = copyRect.getValue();
-    if (user.getValue() != null) opts.user = new String(user.getValue());
-    opts.sendLocalUsername = sendLocalUsername.getValue();
-
-    String v = via.getValue();
-    if (v != null && !v.isEmpty()) {
-      int atIndex = v.indexOf('@');
-      if (atIndex >= 0) {
-        opts.via = v.substring(atIndex + 1);
-        opts.sshUser = v.substring(0, atIndex);
-      } else {
-        opts.via = new String(v);
+      // INPUT OPTIONS
+      opts.fsAltEnter = fsAltEnter.getValue();
+      if (osGrab()) {
+        if (grabKeyboard.getValue().toLowerCase().startsWith("f"))
+          opts.grabKeyboard = Options.GRAB_FS;
+        else if (grabKeyboard.getValue().toLowerCase().startsWith("a"))
+          opts.grabKeyboard = Options.GRAB_ALWAYS;
+        else if (grabKeyboard.getValue().toLowerCase().startsWith("m"))
+          opts.grabKeyboard = Options.GRAB_MANUAL;
       }
-    }
-    opts.tunnel = tunnel.getValue();
-    opts.extSSH = extSSH.getValue();
+      opts.menuKeyCode = MenuKey.getMenuKeyCode();
+      opts.menuKeySym = MenuKey.getMenuKeySym();
+      opts.reverseScroll = reverseScroll.getValue();
+      opts.viewOnly = viewOnly.getValue();
 
-    String s = vncServerName.getValue();
-    if (s != null) {
-      int atIndex = s.indexOf('@');
-      if (atIndex >= 0 && opts.tunnel) {
-        opts.serverName = s.substring(atIndex + 1);
-        opts.sshUser = s.substring(0, atIndex);
-      } else {
-        opts.serverName = new String(s);
+      // DISPLAY OPTIONS
+      opts.acceptBell = acceptBell.getValue();
+      opts.colors = -1;
+      switch (colors.getValue()) {
+        case 8:  case 64:  case 256:  case 32768:  case 65536:
+          opts.colors = colors.getValue();
+          break;
       }
-    }
-    vncServerName.setParam(null);
+      opts.cursorShape = cursorShape.getValue();
+
+      if (benchFile != null)
+        opts.desktopSize.mode = Options.SIZE_SERVER;
+      else {
+        Options.DesktopSize size =
+          Options.parseDesktopSize(desktopSize.getValue());
+        if (size == null)
+          throw new ErrorException("DesktopSize parameter is incorrect");
+        opts.desktopSize = size;
+      }
+
+      opts.fullScreen = fullScreen.getValue();
+
+      opts.scalingFactor = Integer.parseInt(scalingFactor.getDefaultStr());
+      opts.setScalingFactor(scalingFactor.getValue());
+      if (opts.scalingFactor != 100 &&
+          opts.desktopSize.mode == Options.SIZE_AUTO) {
+        vlog.info("Desktop scaling enabled.  Disabling automatic desktop resizing.");
+        opts.desktopSize.mode = Options.SIZE_SERVER;
+      }
+
+      if (span.getValue().toLowerCase().startsWith("p"))
+        opts.span = Options.SPAN_PRIMARY;
+      else if (span.getValue().toLowerCase().startsWith("al"))
+        opts.span = Options.SPAN_ALL;
+      else
+        opts.span = Options.SPAN_AUTO;
+
+      opts.showToolbar = showToolbar.getValue();
+
+      // ENCODING OPTIONS
+      opts.compressLevel = compressLevel.getValue();
+      opts.copyRect = copyRect.getValue();
+
+      String encStr = preferredEncoding.getValue();
+      int encNum = RFB.encodingNum(encStr);
+      if (encNum != -1)
+        opts.preferredEncoding = encNum;
+      else
+        opts.preferredEncoding =
+          RFB.encodingNum(preferredEncoding.getDefaultStr());
+
+      opts.allowJpeg = allowJpeg.getValue();
+      opts.quality = quality.getValue();
+
+      opts.subsampling = Options.SUBSAMP_NONE;
+      switch (subsampling.getValue().toUpperCase().charAt(0)) {
+        case '2':
+          opts.subsampling = Options.SUBSAMP_2X;
+          break;
+        case '4':
+          opts.subsampling = Options.SUBSAMP_4X;
+          break;
+        case 'G':
+          opts.subsampling = Options.SUBSAMP_GRAY;
+          break;
+      }
+
+      // SECURITY AND AUTHENTICATION OPTIONS
+      opts.extSSH = extSSH.getValue();
+      opts.sendLocalUsername = sendLocalUsername.getValue();
+      opts.tunnel = tunnel.getValue();
+      if (user.getValue() != null) opts.user = new String(user.getValue());
+
+      String v = via.getValue();
+      if (v != null && !v.isEmpty()) {
+        int atIndex = v.lastIndexOf('@');
+        if (atIndex >= 0) {
+          opts.via = v.substring(atIndex + 1);
+          opts.sshUser = v.substring(0, atIndex);
+        } else {
+          opts.via = new String(v);
+        }
+        if (opts.via != null) {
+          opts.via = opts.via.replaceAll("\\s", "");
+          if (opts.via.length() == 0)
+            opts.via = null;
+        }
+      }
+
+      String s = vncServerName.getValue();
+      if (s != null) {
+        int atIndex = s.lastIndexOf('@');
+        if (atIndex >= 0 && opts.tunnel) {
+          opts.serverName = s.substring(atIndex + 1);
+          opts.sshUser = s.substring(0, atIndex);
+        } else {
+          opts.serverName = new String(s);
+        }
+        if (opts.serverName != null) {
+          opts.serverName = opts.serverName.replaceAll("\\s", "");
+          if (opts.serverName.length() == 0)
+            opts.serverName = null;
+        }
+      }
+      vncServerName.setParam(null);
 
     } catch (Exception e) {
       reportException(new WarningException("Could not set global options:\n" +
@@ -986,488 +1020,555 @@ public class VncViewer extends javax.swing.JApplet
     setGlobalInsets();
   }
 
-  static StringParameter vncServerName
-  = new StringParameter("Server",
-  "The VNC server to which to connect.  This can be specified in the format " +
-  "<host>[:<display number>] or <host>::<port>, where <host> is the host name " +
-  "or IP address of the machine on which the VNC server is running, " +
-  "<display number> is an optional X display number (default: 0), and <port> " +
-  "is a TCP port.", null);
+  // Is the keyboard grabbed by any TurboVNC Viewer window?
+  public static boolean isKeyboardGrabbed() {
+    synchronized(VncViewer.class) {
+      return grabOwner != null;
+    }
+  }
 
-  static BoolParameter alwaysShowConnectionDialog
-  = new BoolParameter("AlwaysShowConnectionDialog",
-  "Always show the \"New TurboVNC Connection\" dialog even if the server has " +
-  "been specified in an applet parameter or on the command line.  This defaults " +
-  "to 1 if the viewer is being run as an applet.  This parameter has no effect " +
-  "if SSH tunneling is enabled (the \"New TurboVNC Connection\" dialog is " +
-  "never shown in that case.)", false);
+  // Is the keyboard grabbed by a specific TurboVNC Viewer window?
+  public static boolean isKeyboardGrabbed(Viewport viewport) {
+    synchronized(VncViewer.class) {
+      return grabOwner == viewport;
+    }
+  }
 
-  static IntParameter vncServerPort
-  = new IntParameter("Port",
-  "The TCP port number on which the VNC server session is listening.  For Unix " +
-  "VNC servers, this is typically 5900 + the X display number of the VNC " +
-  "session (example: 5901 if connecting to display :1.)  For Windows and Mac " +
-  "VNC servers, this is typically 5900.  (default = 5900)\n " +
-  "If listen mode is enabled, this parameter specifies the TCP port on which " +
-  "the viewer will listen for connections from a VNC server.  (default = 5500)",
-  -1);
+  public static void setGrabOwner(Viewport viewport) {
+    synchronized(VncViewer.class) {
+      grabOwner = viewport;
+    }
+  }
 
-  static BoolParameter listenMode
-  = new BoolParameter("Listen",
-  "Start the viewer in \"listen mode.\"  The viewer will listen on port 5500 " +
-  "(or on the port specified by the Port parameter) for reverse connections " +
-  "from a VNC server.  To connect to a listening viewer from the Unix/Linux " +
-  "TurboVNC Server, use the vncconnect program.", false);
+  // CHECKSTYLE Indentation:OFF
 
-  static BoolParameter shared
-  = new BoolParameter("Shared",
-  "When connecting, request a shared session.  When the session is shared, " +
-  "other users can connect to the session (assuming they have the correct " +
-  "authentication credentials) and collaborate with the user who started the " +
-  "session.  If this option is disabled and the TurboVNC Server is using " +
-  "default settings, then you will only be able to connect to the server if " +
-  "no one else is already connected.", true);
+  // CONNECTION PARAMETERS
 
-  static BoolParameter viewOnly
-  = new BoolParameter("ViewOnly",
-  "Ignore all keyboard and mouse events in the viewer window and do not pass " +
-  "these events to the VNC server.", false);
+  static HeaderParameter connHeader =
+  new HeaderParameter("ConnHeader", "CONNECTION PARAMETERS");
 
-  // Set to 0 to disable the view-only checkbox in the Options dialog
-  static BoolParameter viewOnlyControl
-  = new BoolParameter("ViewOnlyControl", null, true);
+  static BoolParameter alwaysShowConnectionDialog =
+  new BoolParameter("AlwaysShowConnectionDialog",
+  "Always show the \"New TurboVNC Connection\" dialog even if the server " +
+  "has been specified on the command line.", false);
 
-  // Prevent the viewer from sending Ctrl-Alt-Del and Ctrl-Esc to the server
-  static BoolParameter restricted
-  = new BoolParameter("Restricted", null, false);
+  static BoolParameter clientRedirect =
+  new BoolParameter("ClientRedirect", null, false);
 
-  static BoolParameter noReconnect
-  = new BoolParameter("NoReconnect",
+  static StringParameter config =
+  new StringParameter("Config",
+  "File from which to read connection information.  This file can be " +
+  "generated by selecting \"Save connection info as...\" in the system menu " +
+  "of the Windows TurboVNC Viewer.  Connection info files can also be " +
+  "dragged & dropped onto the TurboVNC Viewer icon in order to initiate a " +
+  "new connection.", null);
+
+  static BoolParameter copyRect =
+  new BoolParameter("CopyRect", null, true);
+
+  static BoolParameter continuousUpdates =
+  new BoolParameter("CU", null, true);
+
+  static BoolParameter listenMode =
+  new BoolParameter("Listen",
+  "Start the viewer in \"listen mode.\"  The viewer will listen on port " +
+  "5500 (or on the port specified by the Port parameter) for reverse " +
+  "connections from a VNC server.  To connect a TurboVNC session to a " +
+  "listening viewer, use the vncconnect program on the TurboVNC host.", false);
+
+  static IntParameter maxClipboard =
+  new IntParameter("MaxClipboard",
+  "Maximum permitted length of an outgoing clipboard update (in bytes)",
+  1048576);
+
+  static BoolParameter noNewConn =
+  new BoolParameter("NoNewConn",
+  "Always exit after the first connection closes, and do not allow new " +
+  "connections to be made without restarting the viewer.  This is useful in " +
+  "portal environments that need to control when and how the viewer is " +
+  "launched.  Setting this parameter also disables the \"Close Connection\" " +
+  "option in the F8 menu and the \"Disconnect\" button in the toolbar.",
+  false);
+
+  static BoolParameter noReconnect =
+  new BoolParameter("NoReconnect",
   "Normally, if the viewer is disconnected from the server unexpectedly, " +
-  "the viewer will ask whether you want to reconnect.  Setting this option " +
-  "disables that behavior.", false);
+  "the viewer will ask whether you want to reconnect.  Setting this " +
+  "parameter disables that behavior.", false);
 
-  static StringParameter grabKeyboard
-  = new StringParameter("GrabKeyboard",
+  static IntParameter vncServerPort =
+  new IntParameter("Port",
+  "The TCP port number on which the VNC server is listening.  For Un*x VNC " +
+  "servers, this is typically 5900 + the X display number of the VNC " +
+  "session (example: 5901 if connecting to display :1.)  For Windows and " +
+  "Mac VNC servers, this is typically 5900.  (default = 5900)\n " +
+  "If listen mode is enabled, this parameter specifies the TCP port on " +
+  "which the viewer will listen for reverse connections from a VNC server.  " +
+  "(default = 5500)", -1);
+
+  static IntParameter profileInt =
+  new IntParameter("ProfileInterval",
+  "TurboVNC includes an internal profiling system that can be used to " +
+  "display performance statistics about the connection, such as how many " +
+  "updates per second are being received and how much network bandwidth is " +
+  "being used.  Profiling is activated by selecting \"Performance Info...\" " +
+  "in the F8 menu, which pops up a dialog that displays the statistics.  " +
+  "Profiling can also be enabled on the console only by setting the " +
+  "environment variable TVNC_PROFILE to 1.  The ProfileInterval parameter " +
+  "specifies how often (in seconds) that the performance statistics are " +
+  "updated in the dialog or on the console.  The statistics are averaged " +
+  "over this interval.", 5);
+
+  static BoolParameter recvClipboard =
+  new BoolParameter("RecvClipboard",
+  "Synchronize the local clipboard with the clipboard of the TurboVNC " +
+  "session whenever the latter changes.", true);
+
+  static BoolParameter sendClipboard =
+  new BoolParameter("SendClipboard",
+  "Synchronize the TurboVNC session clipboard with the local clipboard " +
+  "whenever the latter changes.", true);
+
+  static StringParameter vncServerName =
+  new StringParameter("Server",
+  "The VNC server to which to connect.  This can be specified in the " +
+  "format {host}[:{display_number}] or {host}::{port}, where {host} is the " +
+  "host name or IP address of the machine on which the VNC server is " +
+  "running (the \"VNC host\"), {display_number} is an optional X display " +
+  "number (default: 0), and {port} is a TCP port.", null);
+
+  static BoolParameter shared =
+  new BoolParameter("Shared",
+  "Request a shared VNC session.  When the session is shared, other users " +
+  "can connect to the session (assuming they have the correct " +
+  "authentication credentials) and collaborate with the user who started " +
+  "the session.  If this parameter is disabled and the TurboVNC session is " +
+  "using default settings, then you will only be able to connect to the " +
+  "session if no one else is already connected.", true);
+
+  // INPUT PARAMETERS
+
+  static HeaderParameter inputHeader =
+  new HeaderParameter("InputHeader", "INPUT PARAMETERS");
+
+  static BoolParameter fsAltEnter =
+  new BoolParameter("FSAltEnter",
+  "Normally, the viewer will switch into and out of full-screen mode when " +
+  "Ctrl-Alt-Shift-F is pressed or \"Full screen\" is selected from the " +
+  "popup menu.  Setting this parameter will additionally cause the viewer " +
+  "to switch into and out of full-screen mode when Alt-Enter is pressed.",
+  false);
+
+  static StringParameter grabKeyboard =
+  new StringParameter("GrabKeyboard",
   osGrab() ? "When the keyboard is grabbed, special key sequences (such as " +
   "Alt-Tab) that are used to switch windows and perform other window " +
   "management functions are passed to the VNC server instead of being " +
-  "handled by the local window manager.  The default is to grab the " +
-  "keyboard when switching to full-screen mode and ungrab it when exiting " +
-  "full-screen mode.  Setting this parameter to \"Always\" grabs the " +
-  "keyboard when the viewer starts up and does not automatically ungrab it. " +
+  "handled by the local window manager.  The default behavior (\"FS\") is " +
+  "to automatically grab the keyboard in full-screen mode and ungrab it in " +
+  "windowed mode.  When this parameter is set to \"Always\", the keyboard " +
+  "is automatically grabbed in both full-screen mode and windowed mode.  " +
   "When this parameter is set to \"Manual\", the keyboard is only grabbed " +
   "or ungrabbed when the \"Grab Keyboard\" option is selected in the F8 " +
   "menu, or when the Ctrl-Alt-Shift-G hotkey is pressed.  Regardless of the " +
-  "grabbing mode, the F8 menu option and hotkey can always be used to " +
-  "grab or ungrab the keyboard." : null, "FS", "Always, FS, Manual");
+  "grabbing mode, the F8 menu option and hotkey can always be used to grab " +
+  "or ungrab the keyboard." : null, "FS", "Always, FS, Manual");
 
-  static BoolParameter grabPointer
-  = new BoolParameter("GrabPointer",
-  isX11() ? "If this option is enabled, then the pointer will be grabbed " +
+  static BoolParameter grabPointer =
+  new BoolParameter("GrabPointer",
+  isX11() ? "If this parameter is set, then the pointer will be grabbed " +
   "whenever the keyboard is grabbed.  This allows certain keyboard + " +
   "pointer sequences, such as Alt-{drag}, to be passed to the server.  The " +
   "downside, however, is that grabbing the pointer prevents any interaction " +
   "with the local window manager whatsoever (for instance, the window can " +
   "no longer be maximized or closed, and you cannot switch to other running " +
-  "applications.)  Thus, this option is primarily useful in conjunction " +
+  "applications.)  Thus, this parameter is primarily useful in conjunction " +
   "with GrabKeyboard=FS." : null, true);
 
-  static BoolParameter noNewConn
-  = new BoolParameter("NoNewConn",
-  "Always exit after the first connection closes, and do not allow new " +
-  "connections to be made without restarting the viewer.  This is useful in " +
-  "portal environments that need to control when and how the viewer is " +
-  "launched.  This option also disables the \"Close Connection\" option in " +
-  "the F8 menu and the \"Disconnect\" button in the toolbar.", false);
-
-  static BoolParameter fullScreen
-  = new BoolParameter("FullScreen",
-  "Start the viewer in full-screen mode.", false);
-
-  static BoolParameter fsAltEnter
-  = new BoolParameter("FSAltEnter",
-  "Normally, the viewer will switch into and out of full-screen mode when " +
-  "Ctrl-Alt-Shift-F is pressed or \"Full screen\" is selected from the popup " +
-  "menu.  Setting this parameter will additionally cause the viewer to switch " +
-  "into and out of full-screen mode when Alt-Enter is pressed.", false);
-
-  static StringParameter span
-  = new StringParameter("Span",
-  "This option specifies whether the viewer window should span all monitors, " +
-  "only the primary monitor, or whether it should span all monitors only if it " +
-  "cannot fit on the primary monitor (Auto.)  When using automatic desktop " +
-  "resizing, Auto has the same effect as Primary.  Due to general issues " +
-  "with spanning windows across multiple monitors in X11, this option is " +
-  "not available on Un*x/X11 platforms.", "Auto", "Primary, All, Auto");
-
-  static BoolParameter currentMonitorIsPrimary
-  = new BoolParameter("CurrentMonitorIsPrimary",
-  "If this option is enabled, then the monitor that contains the largest " +
-  "number of pixels from the viewer window will be treated as the primary " +
-  "monitor for the purposes of spanning.  Otherwise, the left-most and " +
-  "top-most monitor will always be the primary monitor (as was the case in " +
-  "prior versions of TurboVNC.)", true);
-
-  static BoolParameter showToolbar
-  = new BoolParameter("Toolbar",
-  "Show the toolbar by default.", true);
-
-  static BoolParameter embed
-  = new BoolParameter("Embed",
-  "If the TurboVNC Viewer is being run as an applet, display its output to " +
-  "an embedded frame in the browser window rather than to a dedicated " +
-  "window.  This also has the effect of setting FullScreen=0, " +
-  "NoNewConn=1, and Scale=100.", false);
-
-  static StringParameter menuKey
-  = new StringParameter("MenuKey",
+  static StringParameter menuKey =
+  new StringParameter("MenuKey",
   "The key used to display the popup menu", "F8",
   MenuKey.getMenuKeyValueStr());
 
-  static StringParameter scalingFactor
-  = new StringParameter("Scale",
-  "Reduce or enlarge the remote desktop image.  The value is interpreted as a " +
-  "scaling factor in percent.  The default value of 100% corresponds to the " +
-  "original remote desktop size.  Values below 100 reduce the image size, " +
-  "whereas values above 100 enlarge the image proportionally.  If the " +
-  "parameter is set to \"Auto\", then automatic scaling is performed. " +
-  "Automatic scaling tries to choose a scaling factor in such a way that the " +
-  "whole remote desktop will fit on the local screen.  If the parameter is set " +
-  "to \"FixedRatio\", then automatic scaling is performed, but the original " +
-  "aspect ratio is preserved.  Enabling scaling disables automatic desktop " +
-  "resizing.", "100", "1-1000, Auto, or FixedRatio");
+  // Prevent the viewer from sending Ctrl-Alt-Del and Ctrl-Esc to the server
+  static BoolParameter restricted =
+  new BoolParameter("Restricted", null, false);
 
-  static StringParameter desktopSize
-  = new StringParameter("DesktopSize",
-  "If the VNC server supports remote desktop resizing, then attempt to " +
-  "resize the remote desktop to the specified size (example: 1920x1200)." +
-  "Setting this parameter to \"Auto\" causes the remote desktop to be " +
-  "resized to fit in the local window without using scrollbars (this is the " +
-  "default behavior.)  Setting this parameter to \"Server\" or \"0\" " +
-  "disables remote desktop resizing and uses the desktop size set by the " +
-  "server.", "Auto", "WxH, Auto, or Server");
+  static BoolParameter reverseScroll =
+  new BoolParameter("ReverseScroll",
+  "Reverse the direction of mouse scroll wheel events that are sent to the " +
+  "VNC server.  This is useful when connecting from clients that have " +
+  "\"natural scrolling\" enabled.", false);
 
-  static BoolParameter acceptClipboard
-  = new BoolParameter("RecvClipboard",
-  "Synchronize the local clipboard with the clipboard of the TurboVNC session " +
-  "whenever the latter changes.", true);
+  static BoolParameter viewOnly =
+  new BoolParameter("ViewOnly",
+  "Ignore all keyboard and mouse events in the viewer window and do not " +
+  "pass those events to the VNC server.", false);
 
-  static BoolParameter sendClipboard
-  = new BoolParameter("SendClipboard",
-  "Synchronize the TurboVNC session clipboard with the local clipboard " +
-  "whenever the latter changes.", true);
+  // Set to 0 to disable the view-only checkbox in the Options dialog
+  static BoolParameter viewOnlyControl =
+  new BoolParameter("ViewOnlyControl", null, true);
 
-  static IntParameter maxClipboard
-  = new IntParameter("MaxClipboard",
-  "Maximum permitted length of an outgoing clipboard update (in bytes)",
-  1048576);
+  // DISPLAY PARAMETERS
 
-  static BoolParameter acceptBell
-  = new BoolParameter("AcceptBell",
-  "Produce a system beep when a \"bell\" event is received from the server.",
-  true);
+  static HeaderParameter displayHeader =
+  new HeaderParameter("DisplayHeader", "DISPLAY PARAMETERS");
 
-  static StringParameter preferredEncoding
-  = new StringParameter("Encoding",
-  "Preferred encoding type to use.  If the server does not support the " +
-  "preferred encoding type, then the next best one will be chosen.  There " +
-  "should be no reason to use an encoding type other than Tight when " +
-  "connecting to a TurboVNC server, but this option can be useful when " +
-  "connecting to other types of VNC servers, such as RealVNC.",
-  "Tight", "Tight, ZRLE, Hextile, Raw, RRE");
+  static BoolParameter acceptBell =
+  new BoolParameter("AcceptBell",
+  "Produce a system beep when a \"bell\" event is received from the VNC " +
+  "server.", true);
 
-  static BoolParameter allowJpeg
-  = new BoolParameter("JPEG",
-  "Enable the JPEG subencoding type when using Tight encoding.  This causes " +
-  "the Tight encoder to use JPEG compression for subrectangles that have a " +
-  "high number of unique colors and indexed color subencoding for " +
-  "subrectangles that have a low number of unique colors.  If this option is " +
-  "disabled, then the Tight encoder will select between indexed color or raw " +
-  "subencoding, depending on the size of the subrectangle and its color count.",
-  true);
+  static IntParameter colors =
+  new IntParameter("Colors",
+  "The color depth to use for the viewer's window.  Setting this parameter " +
+  "to 8 specifies a BGR111 pixel format (1 bit for each red, green, and " +
+  "blue component), 64 specifies a BGR222 pixel format, 256 specifies a " +
+  "BGR233 pixel format, 32768 specifies a BGR555 pixel format, and 65536 " +
+  "specifies a BGR565 pixel format.  Lowering the color depth can " +
+  "significantly reduce bandwidth when using encoding types other than " +
+  "Tight or when using Tight encoding without JPEG.  However, colors will " +
+  "not be represented accurately, and CPU usage will increase substantially " +
+  "(causing a corresponding decrease in performance on fast networks.)  The " +
+  "default is to use the native color depth of the display on which the " +
+  "viewer is running, which is usually true color (8 bits per component.)",
+  -1);
 
-  static IntParameter quality
-  = new IntParameter("Quality",
-  "Specifies the JPEG quality to use when compressing JPEG images with the " +
-  "Tight+JPEG encoding methods.  Lower quality values produce grainier JPEG " +
-  "images with more noticeable compression artifacts, but lower quality " +
-  "values also use less network bandwidth and CPU time.  The default value of " +
-  "" + Options.DEFQUAL + " should be perceptually lossless (that is, any image compression " +
-  "artifacts it produces should be imperceptible to the human eye under most " +
-  "viewing conditions.)", Options.DEFQUAL, 1, 100);
-
-  static StringParameter subsampling
-  = new StringParameter("Subsampling",
-  "When compressing an image using JPEG, the RGB pixels are first converted " +
-  "to the YCbCr colorspace, a colorspace in which each pixel is represented as a " +
-  "brightness (Y, or \"luminance\") value and a pair of color (Cb & Cr, or " +
-  "\"chrominance\") values.  After this colorspace conversion, chrominance " +
-  "subsampling can be used to discard some of the chrominance components in " +
-  "order to save bandwidth.  1X subsampling retains the chrominance components " +
-  "for all pixels, and thus it provides the best image quality but also uses " +
-  "the most network bandwidth and CPU time.  2X subsampling retains the " +
-  "chrominance components for every other pixel, and 4X subsampling retains " +
-  "the chrominance components for every fourth pixel (this is typically " +
-  "implemented as 2X subsampling in both X and Y directions.)  Grayscale " +
-  "throws out all of the chrominance components, leaving only luminance.  2X " +
-  "and 4X subsampling will typically produce noticeable aliasing of lines and " +
-  "other sharp features, but with photographic or other \"smooth\" image " +
-  "content, it may be difficult to detect any difference between 1X, 2X, and " +
-  "4X.", "1X", "1X, 2X, 4X, Gray");
-
-  static AliasParameter samp
-  = new AliasParameter("Samp",
-  "Alias for Subsampling", subsampling);
-
-  static IntParameter compressLevel
-  = new IntParameter("CompressLevel",
-  "When Tight encoding is used, the compression level specifies the amount of " +
-  "zlib compression to apply to subrectangles encoded using the indexed color, " +
-  "mono, and raw subencoding types.  If the JPEG subencoding type is enabled, " +
-  "then the compression level also defines the \"palette threshold\", or the " +
-  "minimum number of colors that a subrectangle must have before it is encoded " +
-  "using JPEG.  Higher compression levels have higher palette thresholds and " +
-  "thus favor the use of indexed color subencoding, whereas lower compression " +
-  "levels favor the use of JPEG.\n " +
-  "Compression Level 1 is usually the default whenever JPEG is enabled, because " +
-  "extensive experimentation has revealed little or no benefit to using higher " +
-  "compression levels with most 3D and video workloads.  However, v1.1 and " +
-  "later of the TurboVNC Server also supports Compression Level 2 when JPEG is " +
-  "enabled.  Compression Level 2 can be shown to reduce the bandwidth of " +
-  "certain types of low-color workloads by typically 20-40% (with a " +
-  "commensurate increase in CPU usage.)\n " +
-  "In v1.2 or later of the TurboVNC Server, compression levels 5-7 map to " +
-  "compression levels 0-2, but they also enable the interframe comparison engine " +
-  "in the server.  Interframe comparison maintains a copy of the remote " +
-  "framebuffer for each connected viewer and compares each framebuffer update " +
-  "with the copy to ensure that redundant updates are not sent to the viewer.  " +
-  "This prevents unnecessary network traffic if an ill-behaved application " +
-  "draws the same thing over and over again, but interframe comparison also " +
-  "causes the TurboVNC Server to use more CPU time and much more memory.",
-  1, 0, 9);
-
-  public static BoolParameter compatibleGUI
-  = new BoolParameter("CompatibleGUI",
+  static BoolParameter compatibleGUI =
+  new BoolParameter("CompatibleGUI",
   "Normally, the TurboVNC Viewer GUI exposes only the settings that are " +
-  "useful for TurboVNC servers.  Enabling this option will change the " +
+  "useful for TurboVNC servers.  Setting this parameter changes the " +
   "compression level slider such that it can be used to select any " +
   "compression level from 0-9, which is useful when connecting to other " +
-  "types of VNC servers.  This option is enabled automatically when using " +
-  "any encoding type other than Tight or when selecting a compression level " +
+  "types of VNC servers.  This parameter is effectively set when using any " +
+  "encoding type other than Tight or when selecting a compression level " +
   "that the GUI normally does not expose.", false);
 
-  static IntParameter colors
-  = new IntParameter("Colors",
-  "The color depth to use for the viewer's window.  Specifying 8 will use a " +
-  "BGR111 pixel format (1 bit for each red, green, and blue component.) " +
-  "Specifying 64 will use a BGR222 pixel format, specifying 256 will use a " +
-  "BGR233 pixel format, specifying 32768 will use a BGR555 pixel format, " +
-  "and specifying 65536 will use a BGR565 pixel format.  Lowering the color " +
-  "depth can significantly reduce bandwidth when using encoding types other " +
-  "than Tight or when using Tight encoding without JPEG.  However, colors " +
-  "will not be represented accurately, and CPU usage will increase " +
-  "substantially (causing a corresponding decrease in performance on fast " +
-  "networks.)  The default is to use the native color depth of the display " +
-  "on which the viewer is running, which is usually true color (8 bits per " +
-  "component.)", -1);
+  static BoolParameter currentMonitorIsPrimary =
+  new BoolParameter("CurrentMonitorIsPrimary",
+  "If this parameter is set, then the monitor that contains the largest " +
+  "number of pixels from the viewer window will be treated as the primary " +
+  "monitor for the purposes of spanning.  Otherwise, the left-most and " +
+  "top-most monitor will always be the primary monitor (as was the case in " +
+  "TurboVNC 2.0 and prior versions.)", true);
 
-  static BoolParameter cursorShape
-  = new BoolParameter("CursorShape",
-  "Normally, TurboVNC and compatible servers will send only changes to the " +
-  "remote mouse cursor's shape and position.  This results in the best mouse " +
-  "responsiveness.  Disabling this option causes the server to instead draw " +
-  "the mouse cursor and send it to the viewer as an image every time the " +
-  "cursor moves.  Thus, using a remote cursor can increase network \"chatter\" " +
-  "between server and client significantly, which may cause performance " +
-  "problems on slow networks.  However, using a remote cursor can be " +
-  "advantageous with shared sessions, since it will allow you to see the " +
-  "cursor movements of other connected users.", true);
+  static BoolParameter cursorShape =
+  new BoolParameter("CursorShape",
+  "Normally, the TurboVNC Server and compatible VNC servers will send only " +
+  "changes to the remote mouse cursor's shape and position.  This results " +
+  "in the best mouse responsiveness.  Disabling this parameter causes the " +
+  "server to instead render the mouse cursor and send it to the viewer as " +
+  "an image every time the cursor moves or changes shape.  Thus, using a " +
+  "remotely rendered cursor can increase network \"chatter\" between host " +
+  "and client significantly, which may cause performance problems on slow " +
+  "networks.  However, using a remotely rendered cursor can be advantageous " +
+  "with shared sessions, since it will allow you to see the cursor " +
+  "movements of other connected users.", true);
 
-  static BoolParameter localCursor
-  = new BoolParameter("LocalCursor",
+  static StringParameter desktopSize =
+  new StringParameter("DesktopSize",
+  "If the VNC server supports remote desktop resizing, then attempt to " +
+  "resize the remote desktop to the specified size (example: 1920x1200) or " +
+  "reconfigure the server's virtual screens with a specified layout " +
+  "(example: 1920x1200+0+0,1920x1200+1920+0).  Setting this parameter to " +
+  "\"Auto\" causes the remote desktop to be resized to fit in the viewer " +
+  "window without using scrollbars, and it causes the server's virtual " +
+  "screens to be reconfigured such that their screen boundaries align with " +
+  "the client's screen boundaries when the viewer window is in its default " +
+  "position (this is the default behavior.)  Setting this parameter to " +
+  "\"Server\" or \"0\" disables remote desktop resizing and uses the " +
+  "desktop size and screen configuration set by the server.", "Auto",
+  "WxH, W0xH0+X0+Y0[,W1xH1+X1+Y1,...], Auto, or Server");
+
+  static BoolParameter fullScreen =
+  new BoolParameter("FullScreen",
+  "Start the viewer in full-screen mode.", false);
+
+  static BoolParameter localCursor =
+  new BoolParameter("LocalCursor",
   "The default behavior of the TurboVNC Viewer is to hide the local cursor " +
   "and show only the remote cursor, which can be rendered either by the " +
   "VNC server or on the client, depending on the value of the CursorShape " +
-  "option.  However, certain (broken) VNC server implementations do not " +
-  "support either method of remote cursor rendering, so this option is " +
-  "provided as a workaround for connecting to such servers.  If this option " +
-  "is enabled, then any cursor shape updates from the server are ignored, " +
-  "and the local cursor is always displayed.", false);
+  "parameter.  However, certain (broken) VNC server implementations do not " +
+  "support either method of remote cursor rendering, so this parameter is " +
+  "provided as a workaround for connecting to such servers.  If this " +
+  "parameter is set, then any cursor shape updates from the server are " +
+  "ignored, and the local cursor is always displayed.", false);
 
-  static BoolParameter continuousUpdates
-  = new BoolParameter("CU", null, true);
+  static StringParameter scalingFactor =
+  new StringParameter("Scale",
+  "Reduce or enlarge the remote desktop image.  The value is interpreted as " +
+  "a scaling factor in percent.  The default value of 100% corresponds to " +
+  "the original remote desktop size.  Values below 100 reduce the image " +
+  "size, whereas values above 100 enlarge the image proportionally.  If " +
+  "this parameter is set to \"Auto\", then automatic scaling is performed.  " +
+  "Automatic scaling reduces or enlarges the remote desktop image such that " +
+  "the entire image will fit in the viewer window without using " +
+  "scrollbars.  If this parameter is set to \"FixedRatio\", then automatic " +
+  "scaling is performed, but the original aspect ratio is preserved.  " +
+  "Enabling scaling disables automatic desktop resizing.", "100",
+  "1-1000, Auto, or FixedRatio");
 
-  static BoolParameter copyRect
-  = new BoolParameter("CopyRect", null, true);
+  static StringParameter span =
+  new StringParameter("Span",
+  "This parameter specifies whether the viewer window should span only the " +
+  "primary monitor (\"Primary\"), all monitors (\"All\"), or all monitors " +
+  "only if the window cannot fit on the primary monitor (\"Auto\".)  When " +
+  "using automatic desktop resizing, \"Auto\" has the same effect as " +
+  "\"Primary\" when in windowed mode and the same effect as \"All\" when in " +
+  "full-screen mode.  Due to general issues with spanning windows across " +
+  "multiple monitors in X11, this parameter does not work on Un*x/X11 " +
+  "platforms except in full-screen mode, and it requires the TurboVNC " +
+  "Helper library.", "Auto", "Primary, All, Auto");
+
+  static BoolParameter showToolbar =
+  new BoolParameter("Toolbar",
+  "Show the toolbar by default.", true);
+
+  // ENCODING PARAMETERS
+
+  static HeaderParameter encHeader =
+  new HeaderParameter("EncHeader", "ENCODING PARAMETERS");
+
+  static IntParameter compressLevel =
+  new IntParameter("CompressLevel",
+  "When Tight encoding is used, the compression level specifies the amount " +
+  "of zlib compression to apply to subrectangles encoded using the indexed " +
+  "color, mono, and raw subencoding types.  If the JPEG subencoding type is " +
+  "enabled, then the compression level also defines the \"palette " +
+  "threshold\", or the minimum number of colors that a subrectangle must " +
+  "have before it is encoded using JPEG.  Higher compression levels have " +
+  "higher palette thresholds and thus favor the use of indexed color " +
+  "subencoding, whereas lower compression levels favor the use of JPEG.\n " +
+
+  "Compression Level 1 is usually the default whenever JPEG is enabled, " +
+  "because extensive experimentation has revealed little or no benefit to " +
+  "using higher compression levels with most 3D and video workloads.  " +
+  "However, v1.1 and later of the TurboVNC Server also supports Compression " +
+  "Level 2 when JPEG is enabled.  Compression Level 2 can be shown to " +
+  "reduce the bandwidth of certain types of low-color workloads by " +
+  "typically 20-40% (with a commensurate increase in CPU usage.)\n " +
+
+  "In v1.2 or later of the TurboVNC Server, compression levels 5-7 map to " +
+  "compression levels 0-2, but they also enable the interframe comparison " +
+  "engine in the server.  Interframe comparison maintains a copy of the " +
+  "remote framebuffer for each connected viewer and compares each " +
+  "framebuffer update with the copy to ensure that redundant updates are " +
+  "not sent to the viewer.  This prevents unnecessary network traffic if an " +
+  "ill-behaved application draws the same thing over and over again, but " +
+  "interframe comparison also causes the TurboVNC Server to use more CPU " +
+  "time and much more memory.", 1, 0, 9);
+
+  static StringParameter preferredEncoding =
+  new StringParameter("Encoding",
+  "Preferred encoding type to use.  If the server does not support the " +
+  "preferred encoding type, then the next best one will be chosen.  There " +
+  "should be no reason to use an encoding type other than Tight when " +
+  "connecting to a TurboVNC session, but this parameter can be useful when " +
+  "connecting to other types of VNC servers, such as RealVNC.",
+  "Tight", "Tight, ZRLE, Hextile, Raw");
+
+  static BoolParameter allowJpeg =
+  new BoolParameter("JPEG",
+  "Enable the JPEG subencoding type when using Tight encoding.  This causes " +
+  "the Tight encoder to use JPEG compression for subrectangles that have a " +
+  "high number of unique colors and indexed color subencoding for " +
+  "subrectangles that have a low number of unique colors.  If this " +
+  "parameter is disabled, then the Tight encoder will select between " +
+  "indexed color or raw subencoding, depending on the size of the " +
+  "subrectangle and its color count.", true);
+
+  static IntParameter quality =
+  new IntParameter("Quality",
+  "Specifies the JPEG quality to use when compressing JPEG images with the " +
+  "Tight+JPEG encoding methods.  Lower quality values produce grainier JPEG " +
+  "images with more noticeable compression artifacts, but lower quality " +
+  "values also use less network bandwidth and CPU time.  The default value " +
+  "of " + Options.DEFQUAL + " should be perceptually lossless (that is, any " +
+  "image compression artifacts it produces should be imperceptible to the " +
+  "human eye under most viewing conditions.)", Options.DEFQUAL, 1, 100);
+
+  static StringParameter subsampling =
+  new StringParameter("Subsampling",
+  "When compressing an image using JPEG, the RGB pixels are first converted " +
+  "to the YCbCr colorspace, a colorspace in which each pixel is represented " +
+  "as a brightness (Y, or \"luminance\") value and a pair of color (Cb and " +
+  "Cr, or \"chrominance\") values.  After this colorspace conversion, " +
+  "chrominance subsampling can be used to discard some of the chrominance " +
+  "components in order to save bandwidth.  1X subsampling retains the " +
+  "chrominance components for all pixels, and thus it provides the best " +
+  "image quality but also uses the most network bandwidth and CPU time.  " +
+  "2X subsampling retains the chrominance components for every other pixel, " +
+  "and 4X subsampling retains the chrominance components for every fourth " +
+  "pixel (this is typically implemented as 2X subsampling in both X and Y " +
+  "directions.)  Grayscale throws out all of the chrominance components, " +
+  "leaving only luminance.  2X and 4X subsampling will typically produce " +
+  "noticeable aliasing of lines and other sharp features, but with " +
+  "photographic or other \"smooth\" image content, it may be difficult to " +
+  "detect any difference between 1X, 2X, and 4X.", "1X", "1X, 2X, 4X, Gray");
+
+  static AliasParameter samp =
+  new AliasParameter("Samp",
+  "Alias for Subsampling", subsampling);
+
+  // SECURITY AND AUTHENTICATION PARAMETERS
+
+  static HeaderParameter secHeader =
+  new HeaderParameter("SecHeader", "SECURITY AND AUTHENTICATION PARAMETERS");
 
   static StringParameter secTypes = SecurityClient.secTypes;
 
-  static StringParameter user
-  = new StringParameter("User",
-  "The user name to use for Unix Login authentication (TightVNC-compatible " +
-  "servers) or for Plain and Ident authentication (VeNCrypt-compatible " +
-  "servers.)  Specifying this option has the effect of removing any types " +
-  "from the SecurityTypes parameter except for \"Plain\" and \"Ident\" " +
-  "(and their encrypted derivatives) and \"UnixLogin\", thus allowing only " +
-  "authentication schemes that require a user name.", null);
-
-  static BoolParameter noUnixLogin
-  = new BoolParameter("NoUnixLogin",
-  "This disables the use of Unix Login authentication when connecting to " +
-  "TightVNC-compatible servers and Plain authentication when connecting to " +
-  "VeNCrypt-compatible servers.  Setting this parameter has the effect of " +
-  "removing \"Plain\" (and its encrypted derivatives) and \"UnixLogin\" " +
-  "from the SecurityTypes parameter.  This is useful if the server is " +
-  "configured to prefer an authentication method that supports " +
-  "Unix Login/Plain authentication and you want to override that preference " +
-  "for a particular connection (for instance, to use a one-time password.)",
-  false);
-
-  static BoolParameter sendLocalUsername
-  = new BoolParameter("SendLocalUsername",
-  "Send the local user name when using user/password authentication schemes " +
-  "(Unix Login, Plain, Ident) rather than prompting for it.  As with the " +
-  "\"User\" parameter, setting this parameter has the effect of disabling " +
-  "any authentication schemes that don't require a user name.", false);
-
-  static BoolParameter localUsernameLC
-  = new BoolParameter("LocalUsernameLC",
-  "When the SendLocalUsername option is enabled, enabling this option will " +
-  "cause the local user name to be sent in lowercase, which may be useful " +
-  "when using the viewer on Windows machines (Windows allows mixed-case " +
-  "user names, whereas Un*x generally doesn't.)", false);
-
-  static StringParameter passwordFile
-  = new StringParameter("PasswordFile",
-  "Password file from which to read the password for Standard VNC " +
-  "authentication.  This is useful if your home directory is shared between " +
-  "the client and server machines.", null);
-
-  static AliasParameter passwd
-  = new AliasParameter("passwd",
-  "Alias for PasswordFile", passwordFile);
-
-  static StringParameter password
-  = new StringParameter("Password",
-  "Plain-text password to use when authenticating with the VNC server.  It is " +
-  "strongly recommended that this parameter be used only in conjunction with a " +
-  "one-time password or other disposable token.", null);
-
-  static BoolParameter autoPass
-  = new BoolParameter("AutoPass",
+  static BoolParameter autoPass =
+  new BoolParameter("AutoPass",
   "Read a plain-text password from stdin and use this password when " +
-  "authenticating with the VNC server.  It is strongly recommended that this " +
-  "parameter be used only in conjunction with a one-time password or other " +
-  "disposable token.", false);
+  "authenticating with the VNC server.  It is strongly recommended that " +
+  "this parameter be used only in conjunction with a one-time password or " +
+  "other disposable token.", false);
 
-  static StringParameter encPassword
-  = new StringParameter("EncPassword",
+  static StringParameter encPassword =
+  new StringParameter("EncPassword",
   "Encrypted password to use when authenticating with the VNC server.  The " +
   "encrypted password should be in the same ASCII hex format used by " +
   "TurboVNC connection info (.vnc) files.  For instance, you can generate " +
-  "an ASCII hex VNC password on the TurboVNC server machine by executing\n " +
+  "an ASCII hex VNC password on the TurboVNC host by executing\n " +
   "'cat {VNC_password_file} | xxd -c 256 -ps' or\n " +
   "'echo {unencrypted_password} | /opt/TurboVNC/bin/vncpasswd -f | xxd -c 256 -ps'\n " +
   "This parameter is provided mainly so that web portals can embed a " +
   "password in automatically-generated Java Web Start (JNLP) files without " +
   "exposing the password as plain text.  However, the encryption scheme " +
-  "(DES3) used for VNC passwords is not particularly strong, so encrypting " +
+  "(DES) used for VNC passwords is not particularly strong, so encrypting " +
   "the password guards against only the most casual of attacks.  It is thus " +
   "recommended that this parameter be used only in conjunction with a " +
   "one-time password or other disposable token.", null);
 
-  static StringParameter via
-  = new StringParameter("Via",
-  "This parameter specifies an SSH server or UltraVNC repeater " +
-  "(\"gateway\") through which the VNC connection should be tunneled.  Note " +
-  "that when using the Via parameter, the VNC server host should be " +
-  "specified from the point of view of the gateway.  For example, " +
-  "specifying Via=gateway_machine Server=localhost:1 will connect to " +
-  "display :1 on gateway_machine via the SSH server running on that same " +
-  "machine.  Similarly, specifying Via=gateway_machine:0 Server=localhost:1 " +
-  "will connect to display :1 on gateway_machine via the UltraVNC repeater " +
-  "running on that same machine and listening on port 5900 (VNC display " +
-  ":0.)  The VNC server must be specified on the command line or in the " +
-  "Server parameter when using the Via parameter.  If using the UltraVNC " +
-  "Repeater in \"Mode II\", then specify ID:xxxx as the VNC server name, " +
-  "where xxxx is the ID number of the VNC server to which you want to " +
-  "connect.  If using an SSH server, then the Via parameter can be prefixed " +
-  "by <user>@ to indicate that user name <user> (default = local user name) " +
-  "should be used when authenticating with the SSH server.", null);
+  static BoolParameter extSSH =
+  new BoolParameter("ExtSSH",
+  "Use an external SSH client instead of the built-in SSH client.  The " +
+  "external client defaults to /usr/bin/ssh on Un*x and Mac systems and " +
+  "ssh.exe on Windows systems, but you can use the VNC_VIA_CMD and " +
+  "VNC_TUNNEL_CMD environment variables or the turbovnc.via and " +
+  "turbovnc.tunnel system properties to specify the exact command line to " +
+  "use when creating the tunnel.  If one of those environment variables or " +
+  "system properties is set, then an external SSH client is automatically " +
+  "used.  See the TurboVNC User's Guide for more details.", false);
 
-  static BoolParameter tunnel
-  = new BoolParameter("Tunnel",
-  "This is the same as using Via with an SSH gateway, except that the " +
-  "gateway is assumed to be the same as the VNC server host, so you do not " +
-  "need to specify it separately.  The VNC server must be specified on the " +
-  "command line or in the Server parameter when using the Tunnel parameter. " +
-  "When using the Tunnel parameter, the VNC server host can be prefixed by " +
-  "<user>@ to indicate that user name <user> (default = local user name) " +
-  "should be used when authenticating with the SSH server.", false);
+  static BoolParameter localUsernameLC =
+  new BoolParameter("LocalUsernameLC",
+  "When the SendLocalUsername parameter is set, setting this parameter will " +
+  "cause the local user name to be sent in lowercase, which may be useful " +
+  "when using the viewer on Windows machines (Windows allows mixed-case " +
+  "user names, whereas Un*x and Mac platforms generally don't.)", false);
 
-  static BoolParameter extSSH
-  = new BoolParameter("ExtSSH",
-  "Use an external SSH client on Un*x systems instead of the built-in SSH " +
-  "client.  The external client defaults to /usr/bin/ssh, but you can use " +
-  "the VNC_VIA_CMD and VNC_TUNNEL_CMD environment variables or the " +
-  "turbovnc.via and turbovnc.tunnel system properties to specify the exact " +
-  "command line to use when creating the tunnel.  If one of those " +
-  "environment variables or system properties is set, then an external SSH " +
-  "client is automatically used.  See the TurboVNC User's Guide for more " +
-  "details.", false);
+  static BoolParameter noUnixLogin =
+  new BoolParameter("NoUnixLogin",
+  "This disables the use of Unix Login authentication when connecting to " +
+  "TightVNC-compatible servers and Plain authentication when connecting to " +
+  "VeNCrypt-compatible servers.  Setting this parameter has the effect of " +
+  "removing \"Plain\" (and its encrypted derivatives) and \"UnixLogin\" " +
+  "from the SecurityTypes parameter.  This is useful if the server is " +
+  "configured to prefer a security type that supports Unix Login/Plain " +
+  "authentication and you want to override that preference for a particular " +
+  "connection (for instance, to use a one-time password.)",
+  false);
 
-  static IntParameter sshPort
-  = new IntParameter("SSHPort",
-  "When using the Via or Tunnel options with the built-in SSH client, this " +
-  "parameter specifies the TCP port on which the SSH server is " +
-  "listening.", 22);
+  static StringParameter password =
+  new StringParameter("Password",
+  "Plain-text password to use when authenticating with the VNC server.  It " +
+  "is strongly recommended that this parameter be used only in conjunction " +
+  "with a one-time password or other disposable token.", null);
 
-  static StringParameter sshKey
-  = new StringParameter("SSHKey",
-  "When using the Via or Tunnel options with the built-in SSH client, this " +
-  "parameter specifies the text of the SSH private key to use when " +
+  static StringParameter passwordFile =
+  new StringParameter("PasswordFile",
+  "Password file from which to read the password for Standard VNC " +
+  "authentication.  This is useful if your home directory is shared between " +
+  "the client machine and VNC host.", null);
+
+  static AliasParameter passwd =
+  new AliasParameter("passwd",
+  "Alias for PasswordFile", passwordFile);
+
+  static BoolParameter sendLocalUsername =
+  new BoolParameter("SendLocalUsername",
+  "Send the local user name when using user/password authentication schemes " +
+  "(Unix Login, Plain, Ident) rather than prompting for it.  As with the " +
+  "User parameter, setting this parameter has the effect of disabling any " +
+  "authentication schemes that don't require a user name.", false);
+
+  static StringParameter sshConfig =
+  new StringParameter("SSHConfig",
+  "When using the Via or Tunnel parameters with the built-in SSH client, " +
+  "this parameter specifies the path to an OpenSSH configuration file to " +
+  "use when authenticating with the SSH server.  The OpenSSH configuration " +
+  "file takes precedence over any TurboVNC Viewer parameters.",
+  FileUtils.getHomeDir() + ".ssh/config");
+
+  static StringParameter sshKey =
+  new StringParameter("SSHKey",
+  "When using the Via or Tunnel parameters with the built-in SSH client, " +
+  "this parameter specifies the text of the SSH private key to use when " +
   "authenticating with the SSH server.  You can use \\n within the string " +
   "to specify a new line.", null);
 
-  static StringParameter sshKeyFile
-  = new StringParameter("SSHKeyFile",
-  "When using the Via or Tunnel options with the built-in SSH client, this " +
-  "parameter specifies a file that contains an SSH private key (or keys) to " +
-  "use when authenticating with the SSH server.  If not specified, then the " +
-  "built-in SSH client will attempt to read private keys from ~/.ssh/id_dsa " +
-  "and ~/.ssh/id_rsa.  It will fall back to asking for an SSH password if " +
-  "private key authentication fails.", null);
+  static StringParameter sshKeyFile =
+  new StringParameter("SSHKeyFile",
+  "When using the Via or Tunnel parameters with the built-in SSH client, " +
+  "this parameter specifies a file that contains an SSH private key (or " +
+  "keys) to use when authenticating with the SSH server.  If not specified, " +
+  "then the built-in SSH client will attempt to read private keys from " +
+  "~/.ssh/id_dsa and ~/.ssh/id_rsa.  It will fall back to asking for an SSH " +
+  "password if private key authentication fails.", null);
 
-  static StringParameter sshKeyPass
-  = new StringParameter("SSHKeyPass",
-  "When using the Via or Tunnel options with the built-in SSH client, this " +
-  "parameter specifies the passphrase for the SSH key.", null);
+  static StringParameter sshKeyPass =
+  new StringParameter("SSHKeyPass",
+  "When using the Via or Tunnel parameters with the built-in SSH client, " +
+  "this parameter specifies the passphrase for the SSH key.", null);
 
-  static StringParameter config
-  = new StringParameter("Config",
-  "File from which to read connection information.  This file can be generated " +
-  "by selecting \"Save connection info as...\" in the system menu of the Windows " +
-  "TurboVNC Viewer.", null);
+  static IntParameter sshPort =
+  new IntParameter("SSHPort",
+  "When using the Via or Tunnel parameters with the built-in SSH client, " +
+  "this parameter specifies the TCP port on which the SSH server is " +
+  "listening.", 22);
 
-  static IntParameter profileInt
-  = new IntParameter("ProfileInterval",
-  "TurboVNC includes an internal profiling system that can be used to display " +
-  "performance statistics about the connection, such as how many updates per second " +
-  "are being received and how much network bandwidth is being used.  Profiling " +
-  "is activated by selecting \"Performance Info...\" in the F8 menu, which pops " +
-  "up a dialog that displays the statistics.  Profiling can also be enabled on " +
-  "the console only by setting the environment variable TVNC_PROFILE to 1.  The " +
-  "ProfileInterval parameter specifies how often (in seconds) that the performance " +
-  "statistics are updated in the dialog or on the console.  The statistics are " +
-  "averaged over this interval.", 5);
+  static BoolParameter tunnel =
+  new BoolParameter("Tunnel",
+  "Setting this parameter is equivalent to using the Via parameter with an " +
+  "SSH gateway, except that the gateway host is assumed to be the same as " +
+  "the VNC host, so you do not need to specify it separately.  When using " +
+  "the Tunnel parameter, the VNC host can be prefixed with {user}@ to " +
+  "indicate that user name {user} (default = local user name) should be " +
+  "used when authenticating with the SSH server.", false);
 
-  static BoolParameter clientRedirect
-  = new BoolParameter("ClientRedirect", null, false);
+  static StringParameter user =
+  new StringParameter("User",
+  "The user name to use for Unix Login authentication (TightVNC-compatible " +
+  "servers) or for Plain and Ident authentication (VeNCrypt-compatible " +
+  "servers.)  Specifying this parameter has the effect of removing any " +
+  "types from the SecurityTypes parameter except for \"Plain\" and " +
+  "\"Ident\" (and their encrypted derivatives) and \"UnixLogin\", thus " +
+  "allowing only authentication schemes that require a user name.", null);
+
+  static StringParameter via =
+  new StringParameter("Via",
+  "This parameter specifies an SSH server or UltraVNC repeater " +
+  "(\"gateway\") through which the VNC connection should be tunneled.  Note " +
+  "that when using the Via parameter, the VNC host should be specified from " +
+  "the point of view of the gateway.  For example, specifying " +
+  "Via={gateway_host} Server=localhost:1 will cause the viewer to connect " +
+  "to display :1 on {gateway_host} through the SSH server running on that " +
+  "same host.  Similarly, specifying Via={gateway_host}:0 " +
+  "Server=localhost:1 will cause the viewer to connect to display :1 on " +
+  "{gateway_host} through the UltraVNC repeater running on that same host " +
+  "and listening on port 5900 (VNC display :0.)  If using the UltraVNC " +
+  "Repeater in \"Mode II\", then specify ID:xxxx as the VNC server name, " +
+  "where xxxx is the ID number of the VNC server to which you want to " +
+  "connect.  If using an SSH server, then the gateway host can be prefixed " +
+  "with {user}@ to indicate that user name {user} (default = local user " +
+  "name) should be used when authenticating with the SSH server.", null);
+
+  // CHECKSTYLE Indentation:ON
 
   Thread thread;
   Socket sock;
-  static boolean applet;
   static int nViewers;
   static LogWriter vlog = new LogWriter("main");
   FileInStream benchFile;
@@ -1478,5 +1579,7 @@ public class VncViewer extends javax.swing.JApplet
   OptionsDialog options;
   TrayMenu trayMenu;
   Thread listenThread;
+  static ArrayList<CConn> conns = new ArrayList<CConn>();
   static Insets insets;
+  static Viewport grabOwner;
 }

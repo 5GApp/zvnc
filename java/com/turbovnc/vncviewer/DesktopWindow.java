@@ -1,7 +1,8 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
  * Copyright (C) 2006 Constantin Kaplinsky.  All Rights Reserved.
  * Copyright (C) 2009 Paul Donohue.  All Rights Reserved.
- * Copyright (C) 2010, 2012-2013, 2015-2016 D. R. Commander.  All Rights Reserved.
+ * Copyright (C) 2010, 2012-2013, 2015-2018, 2020 D. R. Commander.
+                                                  All Rights Reserved.
  * Copyright (C) 2011-2013 Brian P. Hinz
  *
  * This is free software; you can redistribute it and/or modify
@@ -25,14 +26,20 @@
 // thread").  This means that we need to be careful with synchronization here.
 
 package com.turbovnc.vncviewer;
+
 import java.awt.*;
 import java.awt.event.*;
+import java.awt.font.TextHitInfo;
+import java.awt.im.InputMethodRequests;
 import java.awt.image.*;
 import java.awt.datatransfer.DataFlavor;
 import java.awt.datatransfer.Transferable;
 import java.awt.datatransfer.Clipboard;
 import java.io.BufferedReader;
-import java.nio.CharBuffer;
+import java.lang.reflect.*;
+import java.nio.*;
+import java.text.AttributedCharacterIterator;
+import java.text.AttributedString;
 import javax.swing.*;
 
 import com.turbovnc.rfb.*;
@@ -40,15 +47,14 @@ import com.turbovnc.rfb.Cursor;
 import com.turbovnc.rfb.Point;
 
 class DesktopWindow extends JPanel implements Runnable, MouseListener,
-  MouseMotionListener, MouseWheelListener, KeyListener {
+  MouseMotionListener, MouseWheelListener, KeyListener, InputMethodRequests {
 
   static final double getTime() {
     return (double)System.nanoTime() / 1.0e9;
   }
 
   // RFB thread
-  public DesktopWindow(int width, int height, PixelFormat serverPF,
-                       CConn cc_) {
+  DesktopWindow(int width, int height, PixelFormat serverPF, CConn cc_) {
     cc = cc_;
     setSize(width, height);
     swingDB = VncViewer.getBooleanProperty("turbovnc.swingdb", false);
@@ -110,7 +116,7 @@ class DesktopWindow extends JPanel implements Runnable, MouseListener,
     viewport.setChild(this);
   }
 
-  // EDT
+  // RFB thread
   public void setCursor(int w, int h, Point hotspot,
                         int[] data, byte[] mask) {
     if (!cc.opts.cursorShape || VncViewer.localCursor.getValue())
@@ -137,9 +143,9 @@ class DesktopWindow extends JPanel implements Runnable, MouseListener,
     int maskBytesPerRow = (w + 7) / 8;
     for (int y = 0; y < h; y++) {
       for (int x = 0; x < w; x++) {
-        int byte_ = y * maskBytesPerRow + x / 8;
+        int _byte = y * maskBytesPerRow + x / 8;
         int bit = 7 - x % 8;
-        if ((mask[byte_] & (1 << bit)) > 0) {
+        if ((mask[_byte] & (1 << bit)) > 0) {
           ((int[])cursor.data)[y * cursor.width() + x] = (0xff << 24) |
             (cursor.cm.getRed(data[y * w + x]) << 16) |
             (cursor.cm.getGreen(data[y * w + x]) << 8) |
@@ -371,7 +377,8 @@ class DesktopWindow extends JPanel implements Runnable, MouseListener,
         }
         if (cc.opts.scalingFactor == Options.SCALE_FIXEDRATIO) {
           float widthRatio = (float)availableSize.width / (float)cc.cp.width;
-          float heightRatio = (float)availableSize.height / (float)cc.cp.height;
+          float heightRatio =
+            (float)availableSize.height / (float)cc.cp.height;
           float ratio = Math.min(widthRatio, heightRatio);
           scaledWidth = (int)Math.floor(cc.cp.width * ratio);
           scaledHeight = (int)Math.floor(cc.cp.height * ratio);
@@ -387,7 +394,7 @@ class DesktopWindow extends JPanel implements Runnable, MouseListener,
 
   // EDT
   public void paintComponent(Graphics g) {
-    Graphics2D g2 = (Graphics2D) g;
+    Graphics2D g2 = (Graphics2D)g;
     if (!swingDB &&
         RepaintManager.currentManager(this).isDoubleBufferingEnabled())
       // If double buffering is enabled, then this must be a system-triggered
@@ -428,7 +435,7 @@ class DesktopWindow extends JPanel implements Runnable, MouseListener,
         CharBuffer cbuf =
           CharBuffer.allocate(VncViewer.maxClipboard.getValue());
         br.read(cbuf);
-        cbuf.flip();
+        ((Buffer)cbuf).flip();
         String newContents = cbuf.toString();
         if (!cc.clipboardDialog.compareContentsTo(newContents)) {
           cc.clipboardDialog.setContents(newContents);
@@ -437,7 +444,7 @@ class DesktopWindow extends JPanel implements Runnable, MouseListener,
         br.close();
         System.gc();
       }
-    } catch (java.lang.Exception e) {
+    } catch (Exception e) {
       vlog.error("Error getting clipboard data:");
       vlog.error("  " + e.getMessage());
     }
@@ -495,13 +502,34 @@ class DesktopWindow extends JPanel implements Runnable, MouseListener,
     mouseCB(e, cc.viewport.buttonReleaseType);
   }
   public void mousePressed(MouseEvent e) {
+    if (VncViewer.OS.startsWith("mac os x")) {
+      try {
+        Class appClass;
+        Object obj;
+
+        if (VncViewer.JAVA_VERSION >= 9) {
+          appClass = Desktop.class;
+          obj = Desktop.getDesktop();
+        } else {
+          appClass = Class.forName("com.apple.eawt.Application");
+          Method getApplication = appClass.getMethod("getApplication",
+                                                     (Class[])null);
+          obj = getApplication.invoke(appClass);
+        }
+
+        Method requestForeground =
+          appClass.getMethod("requestForeground", boolean.class);
+        requestForeground.invoke(obj, false);
+      } catch (Exception ex) {
+        vlog.error("Could not bring window to foreground:");
+        vlog.error("  " + ex.getMessage());
+      }
+    }
+    if (cc.viewer.benchFile == null) checkClipboard();
     mouseCB(e, cc.viewport.buttonPressType);
   }
   public void mouseClicked(MouseEvent e) {}
-  public void mouseEntered(MouseEvent e) {
-    if (VncViewer.embed.getValue())
-      requestFocus();
-  }
+  public void mouseEntered(MouseEvent e) {}
   public void mouseExited(MouseEvent e) {}
 
   // EDT: Mouse wheel callback function
@@ -527,7 +555,7 @@ class DesktopWindow extends JPanel implements Runnable, MouseListener,
 
   // EDT: Handle the key pressed event.
   public void keyPressed(KeyEvent e) {
-    if (e.getKeyCode() == MenuKey.getMenuKeyCode()) {
+    if (e.getKeyCode() == cc.opts.menuKeyCode) {
       int sx = (scaleWidthRatio == 1.00) ?
         lastX : (int)Math.floor(lastX * scaleWidthRatio);
       int sy = (scaleHeightRatio == 1.00) ?
@@ -538,14 +566,19 @@ class DesktopWindow extends JPanel implements Runnable, MouseListener,
       e.consume();
       return;
     }
-    int ctrlAltShiftMask = Event.SHIFT_MASK | Event.CTRL_MASK | Event.ALT_MASK;
-    if ((e.getModifiers() & ctrlAltShiftMask) == ctrlAltShiftMask) {
+    int ctrlAltShiftMask = InputEvent.SHIFT_DOWN_MASK |
+                           InputEvent.CTRL_DOWN_MASK |
+                           InputEvent.ALT_DOWN_MASK;
+    if ((e.getModifiersEx() & ctrlAltShiftMask) == ctrlAltShiftMask) {
       switch (e.getKeyCode()) {
         case KeyEvent.VK_F:
           cc.toggleFullScreen();
           return;
         case KeyEvent.VK_G:
-          cc.toggleKeyboardGrab();
+          if (cc.viewport != null) {
+            cc.viewport.grabKeyboardHelper(!cc.isGrabSelected());
+            cc.selectGrab(!cc.isGrabSelected());
+          }
           return;
         case KeyEvent.VK_I:
           cc.showInfo();
@@ -586,9 +619,17 @@ class DesktopWindow extends JPanel implements Runnable, MouseListener,
           return;
       }
     }
-    if ((e.getModifiers() & Event.META_MASK) == Event.META_MASK) {
+    if ((e.getModifiersEx() & InputEvent.META_DOWN_MASK) ==
+        InputEvent.META_DOWN_MASK) {
       switch (e.getKeyCode()) {
+        case KeyEvent.VK_P:
+          if (VncViewer.JAVA_VERSION >= 9 && VncViewer.JAVA_VERSION <= 11)
+            e.consume();
+          return;
         case KeyEvent.VK_COMMA:
+        case KeyEvent.VK_BACK_QUOTE:
+        case KeyEvent.VK_H:
+        case KeyEvent.VK_Q:
         case KeyEvent.VK_N:
         case KeyEvent.VK_W:
         case KeyEvent.VK_I:
@@ -600,9 +641,9 @@ class DesktopWindow extends JPanel implements Runnable, MouseListener,
           return;
       }
     }
-    if ((e.getModifiers() & Event.ALT_MASK) == Event.ALT_MASK &&
-        e.getKeyCode() == KeyEvent.VK_ENTER &&
-        VncViewer.fsAltEnter.getValue()) {
+    if ((e.getModifiersEx() & InputEvent.ALT_DOWN_MASK) ==
+        InputEvent.ALT_DOWN_MASK && e.getKeyCode() == KeyEvent.VK_ENTER &&
+        cc.opts.fsAltEnter) {
       cc.toggleFullScreen();
       return;
     }
@@ -688,6 +729,85 @@ class DesktopWindow extends JPanel implements Runnable, MouseListener,
     setColourMapEntriesTimerThread = null;
   }
 
+  // These methods, mostly borrowed from https://github.com/brackeen/Scared,
+  // ensure that key input continues to work on Mac platforms even if
+  // ApplePressAndHoldEnabled is true in the user defaults.
+  //
+  // Copyright (c) 1998-2012, David Brackeen
+  // All rights reserved.
+  //
+  // Redistribution and use in source and binary forms, with or without
+  // modification, are permitted provided that the following conditions are
+  // met:
+  //
+  //  * Redistributions of source code must retain the above copyright notice,
+  //    this list of conditions and the following disclaimer.
+  //  * Redistributions in binary form must reproduce the above copyright
+  //    notice, this list of conditions and the following disclaimer in the
+  //    documentation and/or other materials provided with the distribution.
+  //  * Neither the name of David Brackeen nor the names of its contributors
+  //    may be used to endorse or promote products derived from this software
+  //    without specific prior written permission.
+  //
+  // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS
+  // IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
+  // THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+  // PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
+  // CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+  // EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+  // PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+  // PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+  // LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+  // NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+  // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+  @Override
+  public AttributedCharacterIterator cancelLatestCommittedText(
+                          AttributedCharacterIterator.Attribute[] attributes) {
+    return null;
+  }
+
+  @Override
+  public AttributedCharacterIterator getCommittedText(int beginIndex,
+            int endIndex, AttributedCharacterIterator.Attribute[] attributes) {
+    return null;
+  }
+
+  @Override
+  public int getCommittedTextLength() {
+    return 0;
+  }
+
+  @Override
+  public InputMethodRequests getInputMethodRequests() {
+    if (VncViewer.OS.startsWith("mac os x"))
+      return this;
+    return null;
+  }
+
+  @Override
+  public int getInsertPositionOffset() {
+    return 0;
+  }
+
+  @Override
+  public TextHitInfo getLocationOffset(int x, int y) {
+    return null;
+  }
+
+  @Override
+  public AttributedCharacterIterator getSelectedText(
+                          AttributedCharacterIterator.Attribute[] attributes) {
+    return (new AttributedString("")).getIterator();
+  }
+
+  @Override
+  public Rectangle getTextLocation(TextHitInfo textHitInfo) {
+    return new Rectangle(-32768, -32768, 0, 0);
+  }
+
+  // End borrowed code
+
   CConn cc;
 
   // Access to the following must be synchronized:
@@ -704,7 +824,7 @@ class DesktopWindow extends JPanel implements Runnable, MouseListener,
   static Toolkit tk = Toolkit.getDefaultToolkit();
   boolean swingDB;
 
-  public int scaledWidth = 0, scaledHeight = 0;
+  int scaledWidth = 0, scaledHeight = 0;
   float scaleWidthRatio, scaleHeightRatio;
 
   int lastX, lastY;  // EDT only

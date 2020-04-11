@@ -1,5 +1,5 @@
-/* Copyright (C) 2012 Brian P. Hinz
- * Copyright (C) 2012 D. R. Commander.  All Rights Reserved.
+/* Copyright (C) 2012, 2017-2018, 2020 D. R. Commander.  All Rights Reserved.
+ * Copyright (C) 2012 Brian P. Hinz
  *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -26,6 +26,7 @@ import java.nio.channels.*;
 import java.nio.channels.spi.SelectorProvider;
 
 import com.turbovnc.rdr.*;
+import com.turbovnc.vncviewer.*;
 
 public class SocketDescriptor implements FileDescriptor {
 
@@ -37,13 +38,13 @@ public class SocketDescriptor implements FileDescriptor {
       writeSelector = Selector.open();
       readSelector = Selector.open();
     } catch (IOException e) {
-      throw new SystemException(e.toString());
+      throw new SystemException(e);
     }
     try {
       channel.register(writeSelector, SelectionKey.OP_WRITE);
       channel.register(readSelector, SelectionKey.OP_READ);
-    } catch (java.nio.channels.ClosedChannelException e) {
-      throw new SystemException(e.toString());
+    } catch (ClosedChannelException e) {
+      throw new SystemException(e);
     }
   }
 
@@ -52,7 +53,7 @@ public class SocketDescriptor implements FileDescriptor {
       channel.socket().shutdownInput();
       channel.socket().shutdownOutput();
     } catch (IOException e) {
-      throw new SystemException(e.toString());
+      throw new SystemException(e);
     }
   }
 
@@ -60,15 +61,14 @@ public class SocketDescriptor implements FileDescriptor {
     try {
       channel.close();
     } catch (IOException e) {
-      throw new SystemException(e.toString());
+      throw new SystemException(e);
     }
   }
 
   private static SelectorProvider defaultSelectorProvider() {
     // kqueue() selector provider on OS X is not working, fall back to select()
     // for now
-    String os = System.getProperty("os.name");
-    if (os.startsWith("Mac OS X"))
+    if (VncViewer.OS.startsWith("mac os x") && VncViewer.JAVA_VERSION < 9)
       System.setProperty("java.nio.channels.spi.SelectorProvider",
                          "sun.nio.ch.PollSelectorProvider");
     return SelectorProvider.provider();
@@ -84,9 +84,9 @@ public class SocketDescriptor implements FileDescriptor {
     }
     if (n <= 0)
       return (n == 0) ? -1 : 0;
-    b.flip();
+    ((Buffer)b).flip();
     b.get(buf, bufPtr, n);
-    b.clear();
+    ((Buffer)b).clear();
     return n;
 
   }
@@ -95,13 +95,13 @@ public class SocketDescriptor implements FileDescriptor {
     int n;
     ByteBuffer b = ByteBuffer.allocate(length);
     b.put(buf, bufPtr, length);
-    b.flip();
+    ((Buffer)b).flip();
     try {
       n = channel.write(b);
     } catch (IOException e) {
       throw new ErrorException("Write error: " + e.getMessage());
     }
-    b.clear();
+    ((Buffer)b).clear();
     return n;
   }
 
@@ -119,17 +119,17 @@ public class SocketDescriptor implements FileDescriptor {
         n = selector.select();
       } else {
         int tv = timeout.intValue();
-        switch(tv) {
-        case 0:
-          n = selector.selectNow();
-          break;
-        default:
-          n = selector.select((long)tv);
-          break;
+        switch (tv) {
+          case 0:
+            n = selector.selectNow();
+            break;
+          default:
+            n = selector.select((long)tv);
+            break;
         }
       }
     } catch (IOException e) {
-      throw new SystemException(e.toString());
+      throw new SystemException(e);
     }
     return n;
   }
@@ -227,18 +227,17 @@ public class SocketDescriptor implements FileDescriptor {
       writeSelector = Selector.open();
       readSelector = Selector.open();
     } catch (IOException e) {
-      throw new SystemException(e.toString());
+      throw new SystemException(e);
     }
     try {
       channel.register(writeSelector, SelectionKey.OP_WRITE);
       channel.register(readSelector, SelectionKey.OP_READ);
-    } catch (java.nio.channels.ClosedChannelException e) {
-      System.out.println(e.toString());
+    } catch (ClosedChannelException e) {
+      System.err.println(e.toString());
     }
   }
 
   protected SocketChannel channel;
   protected Selector writeSelector;
   protected Selector readSelector;
-
 }

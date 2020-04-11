@@ -1,6 +1,6 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
  * Copyright (C) 2011-2013 Brian P. Hinz
- * Copyright (C) 2012-2013, 2015-2016 D. R. Commander.  All Rights Reserved.
+ * Copyright (C) 2012-2013, 2015-2019 D. R. Commander.  All Rights Reserved.
  *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -31,6 +31,7 @@ import java.util.Iterator;
 import com.turbovnc.rdr.*;
 import com.turbovnc.rfb.*;
 import com.turbovnc.rfb.Cursor;
+import com.turbovnc.rfb.Point;
 
 public class Viewport extends JFrame {
 
@@ -39,14 +40,16 @@ public class Viewport extends JFrame {
     updateTitle();
     setFocusable(false);
     setFocusTraversalKeysEnabled(false);
-    setIconImage(VncViewer.frameImage);
+    setIconImage(VncViewer.FRAME_IMAGE);
     UIManager.getDefaults().put("ScrollPane.ancestorInputMap",
       new UIDefaults.LazyInputMap(new Object[]{}));
     sp = new JScrollPane();
     sp.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 0));
     sp.getViewport().setBackground(Color.BLACK);
     InputMap im = sp.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW);
-    int ctrlAltShiftMask = Event.SHIFT_MASK | Event.CTRL_MASK | Event.ALT_MASK;
+    int ctrlAltShiftMask = InputEvent.SHIFT_DOWN_MASK |
+                           InputEvent.CTRL_DOWN_MASK |
+                           InputEvent.ALT_DOWN_MASK;
     if (im != null) {
       im.put(KeyStroke.getKeyStroke(KeyEvent.VK_UP, ctrlAltShiftMask),
              "unitScrollUp");
@@ -68,7 +71,7 @@ public class Viewport extends JFrame {
     tb = new Toolbar(cc);
     add(tb, BorderLayout.PAGE_START);
     getContentPane().add(sp);
-    if (VncViewer.os.startsWith("mac os x")) {
+    if (VncViewer.OS.startsWith("mac os x")) {
       macMenu = new MacMenuBar(cc);
       setJMenuBar(macMenu);
       if (VncViewer.getBooleanProperty("turbovnc.lionfs", true))
@@ -79,22 +82,33 @@ public class Viewport extends JFrame {
     // full-screen state.
     showToolbar(cc.showToolbar, canDoLionFS);
 
+    final Viewport vp = this;
     addWindowFocusListener(new WindowAdapter() {
       public void windowGainedFocus(WindowEvent e) {
         if (sp.getViewport().getView() != null)
           sp.getViewport().getView().requestFocusInWindow();
-        if (isVisible() && keyboardTempUngrabbed) {
-          vlog.info("Keyboard focus regained. Re-grabbing keyboard.");
-          grabKeyboardHelper(true);
-          keyboardTempUngrabbed = false;
+        if (isVisible()) {
+          if (cc.shouldGrab() && !VncViewer.isKeyboardGrabbed(vp))
+            vlog.info("Keyboard focus regained. Re-grabbing keyboard.");
+          else if (!cc.shouldGrab() && VncViewer.isKeyboardGrabbed())
+            vlog.info("Keyboard focus regained. Ungrabbing keyboard.");
+          grabKeyboardHelper(cc.shouldGrab());
+          cc.selectGrab(cc.shouldGrab());
+        }
+        if (VncViewer.OS.startsWith("mac os x")) {
+          x11dpy = 0;
+          setupExtInputHelper();
         }
       }
       public void windowLostFocus(WindowEvent e) {
-        if (cc.keyboardGrabbed && isVisible()) {
+        if (VncViewer.isKeyboardGrabbed() && isVisible() &&
+            e.getOppositeWindow() == null) {
           vlog.info("Keyboard focus lost. Temporarily ungrabbing keyboard.");
           grabKeyboardHelper(false);
-          keyboardTempUngrabbed = true;
         }
+        if (VncViewer.OS.startsWith("mac os x") &&
+            e.getOppositeWindow() == null)
+          cleanupExtInputHelper();
       }
     });
 
@@ -111,8 +125,10 @@ public class Viewport extends JFrame {
           if ((sp.getSize().width != cc.desktop.scaledWidth) ||
               (sp.getSize().height != cc.desktop.scaledHeight)) {
             cc.desktop.setScaledSize();
-            sp.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
-            sp.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_NEVER);
+            sp.setHorizontalScrollBarPolicy(
+              ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+            sp.setVerticalScrollBarPolicy(
+              ScrollPaneConstants.VERTICAL_SCROLLBAR_NEVER);
             sp.validate();
             if (getExtendedState() != JFrame.MAXIMIZED_BOTH &&
                 !cc.opts.fullScreen) {
@@ -134,8 +150,10 @@ public class Viewport extends JFrame {
           if (availableSize.width >= 1 && availableSize.height >= 1 &&
               (availableSize.width != cc.desktop.scaledWidth ||
                availableSize.height != cc.desktop.scaledHeight)) {
-            sp.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_AS_NEEDED);
-            sp.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED);
+            sp.setHorizontalScrollBarPolicy(
+              ScrollPaneConstants.HORIZONTAL_SCROLLBAR_AS_NEEDED);
+            sp.setVerticalScrollBarPolicy(
+              ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED);
             sp.validate();
             if (timer != null)
               timer.stop();
@@ -144,7 +162,8 @@ public class Viewport extends JFrame {
                 Dimension availableSize = cc.viewport.getAvailableSize();
                 if (availableSize.width < 1 || availableSize.height < 1)
                   throw new ErrorException("Unexpected zero-size component");
-                cc.sendDesktopSize(availableSize.width, availableSize.height, true);
+                cc.sendDesktopSize(availableSize.width, availableSize.height,
+                                   true);
               }
             };
             timer = new Timer(500, actionListener);
@@ -152,8 +171,10 @@ public class Viewport extends JFrame {
             timer.start();
           }
         } else {
-          sp.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_AS_NEEDED);
-          sp.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED);
+          sp.setHorizontalScrollBarPolicy(
+            ScrollPaneConstants.HORIZONTAL_SCROLLBAR_AS_NEEDED);
+          sp.setVerticalScrollBarPolicy(
+            ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED);
           sp.validate();
         }
         if (cc.desktop.cursor != null) {
@@ -178,7 +199,22 @@ public class Viewport extends JFrame {
         }
         repaint();
       }
+
+      public void componentMoved(ComponentEvent e) {
+        if (cc.opts.desktopSize.mode == Options.SIZE_AUTO &&
+            !cc.firstUpdate && !cc.pendingServerResize && cc.checkLayout) {
+          Dimension availableSize = cc.viewport.getAvailableSize();
+          int w = availableSize.width, h = availableSize.height;
+          ScreenSet layout = cc.computeScreenLayout(w, h);
+          cc.checkLayout = false;
+
+          if (w >= 1 && h >= 1 && !layout.equals(cc.cp.screenLayout))
+            cc.sendDesktopSize(w, h, layout, true);
+        }
+      }
     });
+
+    lastEvent.deviceID = -1;
   }
 
   public Dimension getAvailableSize() {
@@ -244,18 +280,21 @@ public class Viewport extends JFrame {
         throw new Exception("Operating system version is " + version);
 
       Class fsuClass = Class.forName("com.apple.eawt.FullScreenUtilities");
-      Class argClasses[] = new Class[]{Window.class, Boolean.TYPE};
-      Method setWindowCanFullScreen =
-        fsuClass.getMethod("setWindowCanFullScreen", argClasses);
-      setWindowCanFullScreen.invoke(fsuClass, this, true);
+      Class[] argClasses = new Class[]{ Window.class, Boolean.TYPE };
+
+      if (VncViewer.JAVA_VERSION < 9) {
+        Method setWindowCanFullScreen =
+          fsuClass.getMethod("setWindowCanFullScreen", argClasses);
+        setWindowCanFullScreen.invoke(fsuClass, this, true);
+      }
 
       Class fsListenerClass =
         Class.forName("com.apple.eawt.FullScreenListener");
       InvocationHandler fsHandler = new MyInvocationHandler(cc);
       Object proxy = Proxy.newProxyInstance(fsListenerClass.getClassLoader(),
-                                            new Class[]{fsListenerClass},
+                                            new Class[]{ fsListenerClass },
                                             fsHandler);
-      argClasses = new Class[]{Window.class, fsListenerClass};
+      argClasses = new Class[]{ Window.class, fsListenerClass };
       Method addFullScreenListenerTo =
         fsuClass.getMethod("addFullScreenListenerTo", argClasses);
       addFullScreenListenerTo.invoke(fsuClass, this, proxy);
@@ -300,6 +339,23 @@ public class Viewport extends JFrame {
     setSize(w, h);
     setLocation(x, y);
     vlog.debug("Set geometry to " + x + ", " + y + " " + w + " x " + h);
+    // For unknown reasons, setting the position with a non-zero X or Y doesn't
+    // work properly on OS X until the component is visible, so we store the
+    // new position and call setLocation() again once the component is made
+    // visible.
+    if (VncViewer.OS.startsWith("mac os x") && !isVisible())
+      deferredPosition = new Point(x, y);
+  }
+
+  public void setVisible(boolean visible) {
+    boolean wasVisible = isVisible();
+
+    super.setVisible(visible);
+
+    if (!wasVisible && visible && deferredPosition != null) {
+      setLocation(deferredPosition.x, deferredPosition.y);
+      deferredPosition = null;
+    }
   }
 
   public void showToolbar(boolean show) { showToolbar(show, false); }
@@ -311,7 +367,7 @@ public class Viewport extends JFrame {
   public void updateTitle() {
     int enc = cc.lastServerEncoding;
     if (enc < 0) enc = cc.currentEncoding;
-    if (enc == Encodings.encodingTight) {
+    if (enc == RFB.ENCODING_TIGHT) {
       if (cc.opts.allowJpeg) {
         String[] subsampStr = { "1X", "4X", "2X", "Gray" };
         setTitle(cc.cp.name() + " [Tight + JPEG " +
@@ -322,7 +378,7 @@ public class Viewport extends JFrame {
                  " + CL " + cc.opts.compressLevel + "]");
       }
     } else {
-      setTitle(cc.cp.name() + " [" + Encodings.encodingName(enc) + "]");
+      setTitle(cc.cp.name() + " [" + RFB.encodingName(enc) + "]");
     }
   }
 
@@ -331,23 +387,22 @@ public class Viewport extends JFrame {
       try {
         System.loadLibrary("turbovnchelper");
         helperAvailable = true;
-      } catch (java.lang.UnsatisfiedLinkError e) {
+      } catch (UnsatisfiedLinkError e) {
         vlog.info("WARNING: Could not find TurboVNC Helper JNI library.  If it is in a");
         vlog.info("  non-standard location, then add -Djava.library.path=<dir>");
         vlog.info("  to the Java command line to specify its location.");
-        vlog.info("  Full-screen mode may not work correctly.");
-        if (VncViewer.osEID())
-          vlog.info("  Keyboard grabbing and extended input device support will be disabled.");
-        else if (VncViewer.osGrab())
+        if (VncViewer.isX11()) {
+          vlog.info("  Multi-screen spanning, keyboard grabbing, and extended input device");
+          vlog.info("  support will be disabled.");
+        } else if (VncViewer.osGrab())
           vlog.info("  Keyboard grabbing will be disabled.");
-
-      } catch (java.lang.Exception e) {
+      } catch (Exception e) {
         vlog.info("WARNING: Could not initialize TurboVNC Helper JNI library:");
         vlog.info("  " + e.toString());
-        vlog.info("  Full-screen mode may not work correctly.");
-        if (VncViewer.osEID())
-          vlog.info("  Keyboard grabbing and extended input device support will be disabled.");
-        else if (VncViewer.osGrab())
+        if (VncViewer.isX11()) {
+          vlog.info("  Multi-screen spanning, keyboard grabbing, and extended input device");
+          vlog.info("  support will be disabled.");
+        } else if (VncViewer.osGrab())
           vlog.info("  Keyboard grabbing will be disabled.");
       }
     }
@@ -359,16 +414,19 @@ public class Viewport extends JFrame {
     if (isHelperAvailable()) {
       try {
         x11FullScreen(on);
-      } catch (java.lang.UnsatisfiedLinkError e) {
+        return;
+      } catch (UnsatisfiedLinkError e) {
         vlog.info("WARNING: Could not invoke x11FullScreen() from TurboVNC Helper.");
-        vlog.info("  Full-screen mode may not work correctly.");
+        vlog.info("  Multi-screen spanning may not work correctly.");
         helperAvailable = false;
-      } catch (java.lang.Exception e) {
+      } catch (Exception e) {
         vlog.info("WARNING: Could not invoke x11FullScreen() from TurboVNC Helper:");
         vlog.info("  " + e.toString());
-        vlog.info("  Full-screen mode may not work correctly.");
+        vlog.info("  Multi-screen spanning may not work correctly.");
       }
     }
+    if (cc.primaryGD != null)
+      cc.primaryGD.setFullScreenWindow(on ? this : null);
   }
 
   public void grabKeyboardHelper(boolean on) {
@@ -376,18 +434,18 @@ public class Viewport extends JFrame {
   }
 
   public void grabKeyboardHelper(boolean on, boolean force) {
-    if (isHelperAvailable()) {
+    if (VncViewer.osGrab() && isHelperAvailable()) {
       try {
-        if (cc.keyboardGrabbed == on && !force)
+        if (((on && VncViewer.isKeyboardGrabbed(this)) ||
+             (!on && !VncViewer.isKeyboardGrabbed())) && !force)
           return;
         grabKeyboard(on, VncViewer.grabPointer.getValue());
-        cc.keyboardGrabbed = on;
-        cc.menu.grabKeyboard.setSelected(cc.keyboardGrabbed);
-      } catch (java.lang.UnsatisfiedLinkError e) {
+        VncViewer.setGrabOwner(on ? this : null);
+      } catch (UnsatisfiedLinkError e) {
         vlog.info("WARNING: Could not invoke grabKeyboard() from TurboVNC Helper.");
         vlog.info("  Keyboard grabbing will be disabled.");
         helperAvailable = false;
-      } catch (java.lang.Exception e) {
+      } catch (Exception e) {
         vlog.info("WARNING: Could not invoke grabKeyboard() from TurboVNC Helper:");
         vlog.info("  " + e.toString());
         vlog.info("  Keyboard grabbing may not work correctly.");
@@ -398,15 +456,93 @@ public class Viewport extends JFrame {
   public void setupExtInputHelper() {
     if (isHelperAvailable() && cc.cp.supportsGII && x11dpy == 0) {
       try {
-        setupExtInput();
-      } catch (java.lang.UnsatisfiedLinkError e) {
+        if (VncViewer.OS.startsWith("mac os x")) {
+          synchronized(VncViewer.class) {
+            setupExtInput();
+          }
+        } else
+          setupExtInput();
+      } catch (UnsatisfiedLinkError e) {
         vlog.info("WARNING: Could not invoke setupExtInput() from TurboVNC Helper.");
         vlog.info("  Extended input device support will be disabled.");
         helperAvailable = false;
-      } catch (java.lang.Exception e) {
+      } catch (Exception e) {
         vlog.info("WARNING: Could not invoke setupExtInput() from TurboVNC Helper:");
         vlog.info("  " + e.toString());
         vlog.info("  Extended input device support may not work correctly.");
+      }
+      if (VncViewer.OS.startsWith("mac os x") && devices == null) {
+        // Create default devices for Wacom tablet
+        for (int i = 0; i < 2; i++) {
+          ExtInputDevice dev = new ExtInputDevice();
+          dev.name = new String(i == 0 ? "Stylus" : "Eraser");
+          dev.id = i;
+          dev.vendorID = 4242;
+          dev.productID = (i == 0 ? RFB.GII_DEVTYPE_STYLUS :
+                                    RFB.GII_DEVTYPE_ERASER);
+          dev.canGenerate = RFB.GII_BUTTON_PRESS_MASK |
+                            RFB.GII_BUTTON_RELEASE_MASK |
+                            RFB.GII_VALUATOR_ABSOLUTE_MASK;
+          dev.numButtons = 3;
+          dev.absolute = true;
+
+          ExtInputDevice.Valuator val = dev.new Valuator();
+          val.index = 0;
+          val.longName = new String("Abs X");
+          val.shortName = new String("0");
+          val.rangeMin = 0;
+          val.rangeMax = 31496;
+          val.rangeCenter = 15748;
+          val.siUnit = RFB.GII_UNIT_LENGTH;
+          val.siDiv = 200000;
+          dev.addValuator(val);
+
+          val = dev.new Valuator();
+          val.index = 1;
+          val.longName = new String("Abs Y");
+          val.shortName = new String("1");
+          val.rangeMin = 0;
+          val.rangeMax = 19685;
+          val.rangeCenter = 9843;
+          val.siUnit = RFB.GII_UNIT_LENGTH;
+          val.siDiv = 200000;
+          dev.addValuator(val);
+
+          val = dev.new Valuator();
+          val.index = 2;
+          val.longName = new String("Abs Pressure");
+          val.shortName = new String("2");
+          val.rangeMin = 0;
+          val.rangeMax = 65536;
+          val.rangeCenter = 32768;
+          val.siUnit = RFB.GII_UNIT_LENGTH;
+          val.siDiv = 1;
+          dev.addValuator(val);
+
+          val = dev.new Valuator();
+          val.index = 3;
+          val.longName = new String("Abs Tilt X");
+          val.shortName = new String("3");
+          val.rangeMin = -64;
+          val.rangeMax = 63;
+          val.rangeCenter = 0;
+          val.siUnit = RFB.GII_UNIT_LENGTH;
+          val.siDiv = 57;
+          dev.addValuator(val);
+
+          val = dev.new Valuator();
+          val.index = 4;
+          val.longName = new String("Abs Tilt Y");
+          val.shortName = new String("4");
+          val.rangeMin = -64;
+          val.rangeMax = 63;
+          val.rangeCenter = 0;
+          val.siUnit = RFB.GII_UNIT_LENGTH;
+          val.siDiv = 57;
+          dev.addValuator(val);
+
+          addInputDevice(dev);
+        }
       }
     }
   }
@@ -414,12 +550,17 @@ public class Viewport extends JFrame {
   public void cleanupExtInputHelper() {
     if (isHelperAvailable() && x11dpy != 0) {
       try {
-        cleanupExtInput();
-      } catch (java.lang.UnsatisfiedLinkError e) {
+        if (VncViewer.OS.startsWith("mac os x")) {
+          synchronized(VncViewer.class) {
+            cleanupExtInput();
+          }
+        } else
+          cleanupExtInput();
+      } catch (UnsatisfiedLinkError e) {
         vlog.info("WARNING: Could not invoke cleanupExtInput() from TurboVNC Helper.");
         vlog.info("  Extended input device support will be disabled.");
         helperAvailable = false;
-      } catch (java.lang.Exception e) {
+      } catch (Exception e) {
         vlog.info("WARNING: Could not invoke cleanupExtInput() from TurboVNC Helper:");
         vlog.info("  " + e.toString());
       }
@@ -444,8 +585,8 @@ public class Viewport extends JFrame {
       ExtInputDevice dev = (ExtInputDevice)i.next();
       if (dev.remoteID == 0) {
         dev.remoteID = deviceOrigin;
-        vlog.info("Successfully created device " + deviceOrigin + " ("
-                  + dev.name + ")");
+        vlog.info("Successfully created device " + deviceOrigin + " (" +
+                  dev.name + ")");
         break;
       }
     }
@@ -453,15 +594,16 @@ public class Viewport extends JFrame {
 
   boolean processExtInputEventHelper(int type) {
     boolean retval = false;
-    if (isHelperAvailable() && cc.cp.supportsGII) {
+    if (isHelperAvailable() && cc.cp.supportsGII &&
+        !VncViewer.OS.startsWith("mac os x")) {
       boolean isExtEvent = false;
       try {
         isExtEvent = processExtInputEvent(type);
-      } catch (java.lang.UnsatisfiedLinkError e) {
+      } catch (UnsatisfiedLinkError e) {
         vlog.info("WARNING: Could not invoke processExtInputEvent() from TurboVNC Helper.");
         vlog.info("  Extended input device support will be disabled.");
         helperAvailable = false;
-      } catch (java.lang.Exception e) {
+      } catch (Exception e) {
         vlog.info("WARNING: Could not invoke processExtInputEvent() from TurboVNC Helper:");
         vlog.info("  " + e.toString());
         vlog.info("  Extended input device support may not work correctly.");
@@ -475,14 +617,155 @@ public class Viewport extends JFrame {
       for (Iterator<ExtInputDevice> i = devices.iterator(); i.hasNext();) {
         ExtInputDevice dev = (ExtInputDevice)i.next();
         if (lastEvent.deviceID == dev.id && dev.remoteID != 0) {
-          if (dev.absolute && lastEvent.type == giiTypes.giiValuatorRelative)
-            lastEvent.type = giiTypes.giiValuatorAbsolute;
+          if (dev.absolute && lastEvent.type == RFB.GII_VALUATOR_RELATIVE)
+            lastEvent.type = RFB.GII_VALUATOR_ABSOLUTE;
           cc.giiSendEvent(dev, lastEvent);
           retval = true;
         }
       }
     }
     return retval;
+  }
+
+  // At the moment, these two methods are used only by the Mac TurboVNC Helper.
+  void handleTabletProximityEvent(final boolean enteringProximity,
+                                  final int pointingDeviceType,
+                                  long windowID) {
+    if (devices == null)
+      return;
+
+    synchronized(lastEvent) {
+      if (enteringProximity) {
+        switch (pointingDeviceType) {
+          case 1:  // pen
+            lastEvent.deviceID = 0;  // Stylus
+            break;
+          case 3:  // eraser
+            lastEvent.deviceID = 1;  // Eraser
+            break;
+        }
+      } else
+        lastEvent.deviceID = -1;
+    }
+  }
+
+  static final int NS_LEFT_MOUSE_DOWN = 1;
+  static final int NS_LEFT_MOUSE_UP = 2;
+  static final int NS_RIGHT_MOUSE_DOWN = 3;
+  static final int NS_RIGHT_MOUSE_UP = 4;
+  static final int NS_MOUSE_MOVED = 5;
+  static final int NS_LEFT_MOUSE_DRAGGED = 6;
+  static final int NS_RIGHT_MOUSE_DRAGGED = 7;
+  static final int NS_OTHER_MOUSE_DOWN = 25;
+  static final int NS_OTHER_MOUSE_UP = 26;
+  static final int NS_OTHER_MOUSE_DRAGGED = 27;
+
+  boolean handleTabletEvent(final int type, final double x, final double y,
+                            final float pressure, final float tiltX,
+                            final float tiltY, long windowID) {
+    if (devices == null || windowID != x11win)
+      return false;
+
+    synchronized(lastEvent) {
+      if (lastEvent.deviceID < 0)
+        // No prior proximity event was received, so we don't know which
+        // tablet device is generating this event.  Punt to the regular
+        // mouse handler.
+        return false;
+    }
+
+    // Don't handle events that are out of the viewport bounds
+    if (y < 0.0 || y > (double)sp.getSize().height - 1.0 ||
+        x < 0.0 || x > (double)sp.getSize().width - 1.0)
+      return false;
+
+    try {
+      SwingUtilities.invokeLater(
+        new Runnable() {
+          public void run() {
+            synchronized(lastEvent) {
+              Dimension winSize = sp.getSize();
+              java.awt.Point spOffset = sp.getViewport().getViewPosition();
+              ExtInputDevice dev = null;
+              for (ExtInputDevice d : devices) {
+                if (lastEvent.deviceID == d.id && d.remoteID != 0)
+                  dev = d;
+              }
+              if (dev == null)
+                return;
+
+              if (type == NS_LEFT_MOUSE_DOWN || type == NS_RIGHT_MOUSE_DOWN ||
+                  type == NS_OTHER_MOUSE_DOWN)
+                lastEvent.type = RFB.GII_BUTTON_PRESS;
+              else if (type == NS_LEFT_MOUSE_UP || type == NS_RIGHT_MOUSE_UP ||
+                       type == NS_OTHER_MOUSE_UP)
+                lastEvent.type = RFB.GII_BUTTON_RELEASE;
+              else
+                lastEvent.type = RFB.GII_VALUATOR_ABSOLUTE;
+
+              lastEvent.buttonNumber = 0;
+              if (type == NS_LEFT_MOUSE_DOWN || type == NS_LEFT_MOUSE_UP)
+                lastEvent.buttonNumber = 1;
+              else if (type == NS_OTHER_MOUSE_DOWN ||
+                       type == NS_OTHER_MOUSE_UP)
+                lastEvent.buttonNumber = 2;
+              else if (type == NS_RIGHT_MOUSE_DOWN ||
+                       type == NS_RIGHT_MOUSE_UP)
+                lastEvent.buttonNumber = 3;
+
+              lastEvent.firstValuator = 0;
+              lastEvent.numValuators = 5;
+
+              double xtmp = (double)x;
+              if (dx > 0)
+                xtmp -= (double)dx;
+              xtmp += spOffset.x;
+              if (cc.cp.width != cc.desktop.scaledWidth) {
+                xtmp = (cc.desktop.scaleWidthRatio == 1.00) ? xtmp :
+                        xtmp / cc.desktop.scaleWidthRatio;
+              }
+              ExtInputDevice.Valuator v =
+                (ExtInputDevice.Valuator)dev.valuators.get(0);
+              lastEvent.valuators[0] = (int)(xtmp / (double)(cc.cp.width - 1) *
+                                       (double)(v.rangeMax - v.rangeMin) +
+                                       (double)v.rangeMin + 0.5);
+              if (lastEvent.valuators[0] > v.rangeMax)
+                lastEvent.valuators[0] = v.rangeMax;
+              else if (lastEvent.valuators[0] < v.rangeMin)
+                lastEvent.valuators[0] = v.rangeMin;
+
+              double ytmp = (double)sp.getSize().height - y - 1.0;
+              if (dy > 0)
+                ytmp -= (double)dy;
+              ytmp += spOffset.y;
+              if (cc.cp.height != cc.desktop.scaledHeight) {
+                ytmp = (cc.desktop.scaleHeightRatio == 1.00) ? ytmp :
+                       ytmp / cc.desktop.scaleHeightRatio;
+              }
+              v = (ExtInputDevice.Valuator)dev.valuators.get(1);
+              lastEvent.valuators[1] =
+                (int)(ytmp / (double)(cc.cp.height - 1) *
+                        (double)(v.rangeMax - v.rangeMin) +
+                      (double)v.rangeMin + 0.5);
+              if (lastEvent.valuators[1] > v.rangeMax)
+                lastEvent.valuators[1] = v.rangeMax;
+              else if (lastEvent.valuators[1] < v.rangeMin)
+                lastEvent.valuators[1] = v.rangeMin;
+
+              lastEvent.valuators[2] = (int)(pressure * 65536.0 + 0.5);
+              lastEvent.valuators[3] = (int)(tiltX * 63.0 + 0.5);
+              lastEvent.valuators[4] = (int)(tiltY * 63.0 + 0.5);
+
+              lastEvent.print();
+              cc.writer().writeGIIEvent(dev, lastEvent);
+            }
+          }
+        });
+    } catch (Exception e) {
+      vlog.error("SwingUtilities.invokeLater() failed: " + e.getMessage());
+      return false;
+    }
+    return true;
   }
 
   private native void x11FullScreen(boolean on);
@@ -500,17 +783,18 @@ public class Viewport extends JFrame {
 
   CConn cc;
   JScrollPane sp;
-  public Toolbar tb;
-  public int dx, dy = 0, adjustWidth, adjustHeight;
+  Toolbar tb;
+  int dx, dy = 0, adjustWidth, adjustHeight;
   MacMenuBar macMenu;
   boolean canDoLionFS;
-  public boolean keyboardTempUngrabbed;
   static boolean triedHelperInit, helperAvailable;
   Timer timer;
   private long x11dpy, x11win;
-  public int buttonPressType, buttonReleaseType, motionType;
+  int buttonPressType, buttonReleaseType, motionType;
   ArrayList<ExtInputDevice> devices;
   ExtInputEvent lastEvent = new ExtInputEvent();
+  Point deferredPosition;
+  int leftMon, rightMon, topMon, bottomMon;
 
   static LogWriter vlog = new LogWriter("Viewport");
 }

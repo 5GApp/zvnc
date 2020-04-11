@@ -1,6 +1,6 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
  * Copyright (C) 2011-2013 Brian P. Hinz
- * Copyright (C) 2012-2016 D. R. Commander.  All Rights Reserved.
+ * Copyright (C) 2012-2018, 2020 D. R. Commander.  All Rights Reserved.
  *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -39,14 +39,15 @@ class OptionsDialog extends Dialog implements ActionListener, ChangeListener,
   // Static variables
   static LogWriter vlog = new LogWriter("OptionsDialog");
 
-  OptionsDialogCallback cb;
+  OptionsDialogCallback callback;
   JTabbedPane tabPane;
   JPanel buttonPane, encodingPanel, connPanel, globalPanel, secPanel;
   JCheckBox allowJpeg, interframe;
   JComboBox menuKey, scalingFactor, encMethodComboBox, span, desktopSize,
     grabKeyboard;
   JSlider jpegQualityLevel, subsamplingLevel, compressionLevel;
-  JCheckBox viewOnly, acceptClipboard, sendClipboard, acceptBell;
+  JCheckBox viewOnly, recvClipboard, sendClipboard, acceptBell,
+    reverseScroll, fsAltEnter;
   JCheckBox fullScreen, shared, cursorShape, showToolbar;
   JCheckBox secVeNCrypt, encNone, encTLS, encX509;
   JCheckBox secNone, secVnc, secUnixLogin, secPlain, secIdent,
@@ -55,7 +56,7 @@ class OptionsDialog extends Dialog implements ActionListener, ChangeListener,
   JButton okButton, cancelButton;
   JButton x509caButton, x509crlButton;
   JTextField x509ca, x509crl;
-  JButton defSaveButton, defClearButton;
+  JButton defClearButton;
   JLabel encMethodLabel;
   JLabel jpegQualityLabel, jpegQualityLabelLo, jpegQualityLabelHi;
   JLabel subsamplingLabel, subsamplingLabelLo, subsamplingLabelHi;
@@ -65,9 +66,9 @@ class OptionsDialog extends Dialog implements ActionListener, ChangeListener,
   Hashtable<Integer, String> subsamplingLabelTable;
   String oldScalingFactor, oldDesktopSize;
 
-  public OptionsDialog(OptionsDialogCallback cb_) {
+  OptionsDialog(OptionsDialogCallback callback_) {
     super(true);
-    cb = cb_;
+    callback = callback_;
 
     tabPane = new JTabbedPane();
 
@@ -82,7 +83,8 @@ class OptionsDialog extends Dialog implements ActionListener, ChangeListener,
       "Tight + Medium-Quality JPEG",
       "Tight + Low-Quality JPEG (WAN)",
       "Lossless Tight (Gigabit)",
-      "Lossless Tight + Zlib (WAN)"};
+      "Lossless Tight + Zlib (WAN)"
+    };
     encMethodComboBox = new JComboBox(encMethod);
     encMethodComboBox.addActionListener(this);
 
@@ -247,12 +249,11 @@ class OptionsDialog extends Dialog implements ActionListener, ChangeListener,
     JLabel scalingFactorLabel = new JLabel("Scaling factor:");
     Object[] scalingFactors = {
       "Auto", "Fixed Aspect Ratio", "50%", "75%", "95%", "100%", "105%",
-      "125%", "150%", "175%", "200%", "250%", "300%", "350%", "400%" };
+      "125%", "150%", "175%", "200%", "250%", "300%", "350%", "400%"
+    };
     scalingFactor = new JComboBox(scalingFactors);
     scalingFactor.setEditable(true);
     scalingFactor.addItemListener(this);
-    if (VncViewer.embed.getValue())
-      scalingFactor.setEnabled(false);
 
     Dialog.addGBComponent(scalingFactorLabel, displayPanel,
                           0, 0, 1, 1, 2, 2, 1, 0,
@@ -267,16 +268,33 @@ class OptionsDialog extends Dialog implements ActionListener, ChangeListener,
 
     Object[] desktopSizeOptions = {
       "Auto", "Server", "480x320", "640x360", "640x480", "800x480", "800x600",
-      "854x480", "960x540", "960x600", "960x640", "1024x640", "1024x768",
-      "1136x640", "1152x864", "1280x720", "1280x800", "1280x960", "1280x1024",
-      "1344x840", "1344x1008", "1360x768", "1366x768", "1400x1050", "1440x900",
-      "1600x900", "1600x1000", "1600x1200", "1680x1050", "1920x1080",
-      "1920x1200", "2048x1152", "2048x1536", "2560x1440", "2560x1600",
-      "2880x1800", "3200x1800" };
+      "854x480", "960x540", "960x600", "960x640",
+      "1024x640", "1024x640+0+0,1024x640+1024+0",
+      "1024x768", "1136x640", "1152x864",
+      "1280x720", "1280x720+0+0,1280x720+1280+0",
+      "1280x800", "1280x800+0+0,1280x800+1280+0",
+      "1280x960", "1280x1024",
+      "1344x840", "1344x840+0+0,1344x840+1344+0",
+      "1344x1008", "1360x768",
+      "1366x768", "1366x768+0+0,1366x768+1366+0",
+      "1400x1050",
+      "1440x900", "1440x900+0+0,1440x900+1440+0",
+      "1600x900", "1600x900+0+0,1600x900+1600+0",
+      "1600x1000", "1600x1000+0+0,1600x1000+1600+0",
+      "1600x1200", "1680x1050",
+      "1920x1080", "1920x1080+0+0,1920x1080+1920+0",
+      "1920x1200", "1920x1200+0+0,1920x1200+1920+0",
+      "2048x1152", "2048x1536",
+      "2560x1440", "2560x1440+0+0,2560x1440+2560+0",
+      "2560x1600", "2560x1600+0+0,2560x1600+2560+0",
+      "2880x1800", "2880x1800+0+0,2880x1800+2880+0",
+      "3200x1800", "3200x1800+0+0,3200x1800+3200+0"
+    };
     JLabel desktopSizeLabel = new JLabel("Remote desktop size:");
     desktopSize = new JComboBox(desktopSizeOptions);
     desktopSize.setEditable(true);
     desktopSize.addItemListener(this);
+    desktopSize.setMaximumSize(desktopSize.getPreferredSize());
 
     Dialog.addGBComponent(desktopSizeLabel, displayPanel,
                           0, 1, 1, 1, 2, 2, 1, 0,
@@ -291,8 +309,6 @@ class OptionsDialog extends Dialog implements ActionListener, ChangeListener,
 
     fullScreen = new JCheckBox("Full-screen mode");
     fullScreen.addItemListener(this);
-    if (VncViewer.embed.getValue())
-      fullScreen.setEnabled(false);
 
     Dialog.addGBComponent(fullScreen, displayPanel,
                           0, 2, 2, 1, 2, 2, 1, 0,
@@ -301,11 +317,16 @@ class OptionsDialog extends Dialog implements ActionListener, ChangeListener,
                           new Insets(4, 5, 0, 5));
 
     Object[] spanOptions = {
-      "Primary monitor only", "All monitors", "Automatic" };
-    JLabel spanLabel = new JLabel("Span mode:");
+      "Primary monitor only", "All monitors", "Automatic"
+    };
+    JLabel spanLabel;
+    if (VncViewer.isX11() && Viewport.isHelperAvailable())
+      spanLabel = new JLabel("Full-screen span mode:");
+    else
+      spanLabel = new JLabel("Span mode:");
     span = new JComboBox(spanOptions);
     span.addItemListener(this);
-    if (VncViewer.embed.getValue() || VncViewer.isX11()) {
+    if (VncViewer.isX11() && !Viewport.isHelperAvailable()) {
       spanLabel.setEnabled(false);
       span.setEnabled(false);
     }
@@ -330,7 +351,8 @@ class OptionsDialog extends Dialog implements ActionListener, ChangeListener,
                           GridBagConstraints.FIRST_LINE_START,
                           new Insets(4, 5, 0, 5));
 
-    cursorShape = new JCheckBox("Render cursor locally (enable remote cursor shape updates)");
+    cursorShape =
+      new JCheckBox("Render cursor locally (enable remote cursor shape updates)");
     cursorShape.addItemListener(this);
 
     Dialog.addGBComponent(cursorShape, displayPanel,
@@ -352,6 +374,24 @@ class OptionsDialog extends Dialog implements ActionListener, ChangeListener,
                           GridBagConstraints.LINE_START,
                           new Insets(4, 5, 0, 5));
 
+    reverseScroll = new JCheckBox("Reverse scroll wheel direction");
+    reverseScroll.addItemListener(this);
+
+    Dialog.addGBComponent(reverseScroll, inputPanel,
+                          0, 1, 2, 1, 2, 2, 1, 0,
+                          GridBagConstraints.HORIZONTAL,
+                          GridBagConstraints.LINE_START,
+                          new Insets(4, 5, 0, 5));
+
+    fsAltEnter = new JCheckBox("Toggle full-screen mode with Alt-Enter");
+    fsAltEnter.addItemListener(this);
+
+    Dialog.addGBComponent(fsAltEnter, inputPanel,
+                          0, 2, 2, 1, 2, 2, 1, 0,
+                          GridBagConstraints.HORIZONTAL,
+                          GridBagConstraints.LINE_START,
+                          new Insets(4, 5, 0, 5));
+
     boolean enableGrab = VncViewer.osGrab() && Viewport.isHelperAvailable();
 
     if (enableGrab) {
@@ -365,19 +405,20 @@ class OptionsDialog extends Dialog implements ActionListener, ChangeListener,
       grabKeyboard.addItemListener(this);
 
       Dialog.addGBComponent(grabLabel, inputPanel,
-                            0, 1, 1, 1, 2, 2, 1, 0,
+                            0, 2, 1, 1, 2, 2, 1, 0,
                             GridBagConstraints.NONE,
                             GridBagConstraints.FIRST_LINE_START,
                             new Insets(8, 8, 0, 5));
       Dialog.addGBComponent(grabKeyboard, inputPanel,
-                            1, 1, 1, 1, 2, 2, 25, 0,
+                            1, 2, 1, 1, 2, 2, 25, 0,
                             GridBagConstraints.NONE,
                             GridBagConstraints.FIRST_LINE_START,
                             new Insets(4, 5, 0, 5));
     }
 
     JPanel restrictionsPanel = new JPanel(new GridBagLayout());
-    restrictionsPanel.setBorder(BorderFactory.createTitledBorder("Restrictions"));
+    restrictionsPanel.setBorder(
+      BorderFactory.createTitledBorder("Restrictions"));
 
     shared = new JCheckBox("Request shared session");
     shared.addItemListener(this);
@@ -388,10 +429,10 @@ class OptionsDialog extends Dialog implements ActionListener, ChangeListener,
                           GridBagConstraints.FIRST_LINE_START,
                           new Insets(4, 5, 0, 5));
 
-    acceptClipboard = new JCheckBox("Accept clipboard from server");
-    acceptClipboard.addItemListener(this);
+    recvClipboard = new JCheckBox("Accept clipboard from server");
+    recvClipboard.addItemListener(this);
 
-    Dialog.addGBComponent(acceptClipboard, restrictionsPanel,
+    Dialog.addGBComponent(recvClipboard, restrictionsPanel,
                           0, 1, 2, 1, 2, 2, 1, 0,
                           GridBagConstraints.HORIZONTAL,
                           GridBagConstraints.LINE_START,
@@ -441,6 +482,9 @@ class OptionsDialog extends Dialog implements ActionListener, ChangeListener,
     menuKey  = new JComboBox(menuKeys);
     menuKey.addItemListener(this);
 
+    defClearButton = new JButton("Clear the list of saved connections");
+    defClearButton.addActionListener(this);
+
     Dialog.addGBComponent(showToolbar, globalPanel,
                           0, 1, 2, 1, 2, 2, 1, 0,
                           GridBagConstraints.HORIZONTAL,
@@ -456,35 +500,18 @@ class OptionsDialog extends Dialog implements ActionListener, ChangeListener,
                           GridBagConstraints.NONE,
                           GridBagConstraints.FIRST_LINE_START,
                           new Insets(4, 5, 0, 5));
-
-    JPanel defaultsPanel = new JPanel(new GridBagLayout());
-    defaultsPanel.setBorder(BorderFactory.createTitledBorder("Defaults"));
-    defSaveButton = new JButton("Save");
-    defSaveButton.addActionListener(this);
-    Dialog.addGBComponent(defSaveButton, defaultsPanel,
-                          0, 0, 1, 1, 2, 2, 1, 0,
-                          GridBagConstraints.HORIZONTAL,
-                          GridBagConstraints.FIRST_LINE_START,
-                          new Insets(2, 2, 2, 2));
-    defClearButton = new JButton("Clear");
-    defClearButton.addActionListener(this);
-    Dialog.addGBComponent(defClearButton, defaultsPanel,
-                          1, 0, 1, 1, 2, 2, 1, 0,
-                          GridBagConstraints.HORIZONTAL,
-                          GridBagConstraints.FIRST_LINE_START,
-                          new Insets(2, 2, 2, 2));
-
-    Dialog.addGBComponent(defaultsPanel, globalPanel,
+    Dialog.addGBComponent(defClearButton, globalPanel,
                           0, 3, 2, GridBagConstraints.REMAINDER, 2, 2, 1, 1,
                           GridBagConstraints.NONE,
                           GridBagConstraints.FIRST_LINE_START,
-                          new Insets(25, 5, 4, 5));
+                          new Insets(8, 5, 0, 5));
 
     // security tab
     secPanel = new JPanel(new GridBagLayout());
 
     JPanel encryptionPanel = new JPanel(new GridBagLayout());
-    encryptionPanel.setBorder(BorderFactory.createTitledBorder("Session encryption"));
+    encryptionPanel.setBorder(
+      BorderFactory.createTitledBorder("Session encryption"));
     encNone = addCheckbox("None", null, encryptionPanel);
     encTLS = addCheckbox("Anonymous TLS", null, encryptionPanel);
     encX509 = addJCheckBox("TLS with X.509 certificates", null,
@@ -495,7 +522,8 @@ class OptionsDialog extends Dialog implements ActionListener, ChangeListener,
                              new Insets(0, 0, 0, 60), 0, 0));
 
     JPanel x509Panel = new JPanel(new GridBagLayout());
-    x509Panel.setBorder(BorderFactory.createTitledBorder("X.509 certificate validation"));
+    x509Panel.setBorder(
+      BorderFactory.createTitledBorder("X.509 certificate validation"));
     x509ca = new JTextField("", 1);
     JLabel x509caLabel = new JLabel("CA cert:");
     x509caButton = new JButton("Load");
@@ -536,7 +564,8 @@ class OptionsDialog extends Dialog implements ActionListener, ChangeListener,
                           new Insets(4, 2, 0, 2));
 
     JPanel authPanel = new JPanel(new GridBagLayout());
-    authPanel.setBorder(BorderFactory.createTitledBorder("Authentication schemes"));
+    authPanel.setBorder(
+      BorderFactory.createTitledBorder("Authentication schemes"));
     secNone = addCheckbox("None", null, authPanel);
     secVnc = addCheckbox("Standard VNC", null, authPanel);
     secUnixLogin = addJCheckBox("Unix Login (TightVNC/TurboVNC)", null,
@@ -563,12 +592,15 @@ class OptionsDialog extends Dialog implements ActionListener, ChangeListener,
                           GridBagConstraints.LINE_START,
                           new Insets(0, 20, 0, 0));
 
-    secVeNCrypt = new JCheckBox("Extended encryption and authentication (VeNCrypt)");
+    secVeNCrypt =
+      new JCheckBox("Extended encryption and authentication (VeNCrypt)");
     secVeNCrypt.addItemListener(this);
 
     JPanel gatewayPanel = new JPanel(new GridBagLayout());
-    gatewayPanel.setBorder(BorderFactory.createTitledBorder("Gateway (SSH server or UltraVNC repeater)"));
+    gatewayPanel.setBorder(
+      BorderFactory.createTitledBorder("Gateway (SSH server or UltraVNC repeater)"));
     gateway = new JTextField("", 1);
+    filterWhitespace(gateway);
     JLabel gatewayLabel = new JLabel("Host:");
     sshUser = new JTextField("", 1);
     JLabel sshUserLabel = new JLabel("SSH user:");
@@ -667,42 +699,50 @@ class OptionsDialog extends Dialog implements ActionListener, ChangeListener,
 
     dlg.addWindowListener(new WindowAdapter() {
       public void windowActivated(WindowEvent e) {
-        if (cb != null) cb.setTightOptions();
+        if (callback != null) callback.setTightOptions();
       }
     });
   }
 
   public void initDialog() {
-    if (cb != null) cb.setOptions();
+    if (callback != null) callback.setOptions();
     oldScalingFactor = scalingFactor.getSelectedItem().toString();
     oldDesktopSize = desktopSize.getSelectedItem().toString();
   }
 
   private void updatePreferences() {
-    UserPreferences.set("global", "JPEG", allowJpeg.isSelected());
-    String subsamplingStr =
-      subsamplingLabelTable.get(subsamplingLevel.getValue());
-    UserPreferences.set("global", "Subsampling", subsamplingStr);
-    UserPreferences.set("global", "Quality", jpegQualityLevel.getValue());
-    UserPreferences.set("global", "CompressLevel", getCompressionLevel());
-    UserPreferences.set("global", "ViewOnly", viewOnly.isSelected());
+    // CONNECTION
+    //   (no GUI equivalent)
+    UserPreferences.set("global", "AlwaysShowConnectionDialog",
+                        VncViewer.alwaysShowConnectionDialog.getValue());
     UserPreferences.set("global", "RecvClipboard",
-                        acceptClipboard.isSelected());
+                        recvClipboard.isSelected());
     UserPreferences.set("global", "SendClipboard", sendClipboard.isSelected());
-    String menuKeyStr =
-      MenuKey.getMenuKeySymbols()[menuKey.getSelectedIndex()].name;
-    UserPreferences.set("global", "MenuKey", menuKeyStr);
+    UserPreferences.set("global", "Shared", shared.isSelected());
+
+    // INPUT
+    UserPreferences.set("global", "FSAltEnter", fsAltEnter.isSelected());
     if (VncViewer.osGrab() && Viewport.isHelperAvailable()) {
       String grabStr = (String)grabKeyboard.getSelectedItem();
       if (grabStr.equalsIgnoreCase("Full-screen only"))
         grabStr = "FS";
       UserPreferences.set("global", "GrabKeyboard", grabStr);
     }
-    UserPreferences.set("global", "FullScreen", fullScreen.isSelected());
-    UserPreferences.set("global", "Shared", shared.isSelected());
-    UserPreferences.set("global", "CursorShape", cursorShape.isSelected());
+    String menuKeyStr =
+      MenuKey.getMenuKeySymbols()[menuKey.getSelectedIndex()].name;
+    UserPreferences.set("global", "MenuKey", menuKeyStr);
+    UserPreferences.set("global", "ReverseScroll", reverseScroll.isSelected());
+    UserPreferences.set("global", "ViewOnly", viewOnly.isSelected());
+
+    // DISPLAY
     UserPreferences.set("global", "AcceptBell", acceptBell.isSelected());
-    UserPreferences.set("global", "Toolbar", showToolbar.isSelected());
+    //   (no GUI equivalent)
+    if (VncViewer.colors.getValue() != -1)
+      UserPreferences.set("global", "Colors", VncViewer.colors.getValue());
+    UserPreferences.set("global", "CursorShape", cursorShape.isSelected());
+    UserPreferences.set("global", "DesktopSize",
+                        desktopSize.getSelectedItem().toString());
+    UserPreferences.set("global", "FullScreen", fullScreen.isSelected());
     int sf =
       Options.parseScalingFactor(scalingFactor.getSelectedItem().toString());
     if (sf == Options.SCALE_AUTO)
@@ -711,38 +751,47 @@ class OptionsDialog extends Dialog implements ActionListener, ChangeListener,
       UserPreferences.set("global", "Scale", "FixedRatio");
     else
       UserPreferences.set("global", "Scale", sf);
-    UserPreferences.set("global", "DesktopSize",
-                        desktopSize.getSelectedItem().toString());
-    UserPreferences.set("global", "secVeNCrypt", secVeNCrypt.isSelected());
+    String spanString = ((String)span.getSelectedItem()).toLowerCase();
+    if (spanString.startsWith("p"))
+      UserPreferences.set("global", "Span", "Primary");
+    else if (spanString.startsWith("al"))
+      UserPreferences.set("global", "Span", "All");
+    else
+      UserPreferences.set("global", "Span", "Auto");
+    UserPreferences.set("global", "Toolbar", showToolbar.isSelected());
+
+    // ENCODING
+    UserPreferences.set("global", "CompressLevel", getCompressionLevel());
+    //   (no GUI equivalent)
+    if (VncViewer.preferredEncoding.getValue() != null)
+      UserPreferences.set("global", "Encoding",
+                          VncViewer.preferredEncoding.getValue());
+    UserPreferences.set("global", "JPEG", allowJpeg.isSelected());
+    UserPreferences.set("global", "Quality", jpegQualityLevel.getValue());
+    String subsamplingStr =
+      subsamplingLabelTable.get(subsamplingLevel.getValue());
+    UserPreferences.set("global", "Subsampling", subsamplingStr);
+
+    // SECURITY AND AUTHENTICATION
     UserPreferences.set("global", "encNone", encNone.isSelected());
     UserPreferences.set("global", "encTLS", encTLS.isSelected());
     UserPreferences.set("global", "encX509", encX509.isSelected());
-    UserPreferences.set("global", "secNone", secNone.isSelected());
-    UserPreferences.set("global", "secVnc", secVnc.isSelected());
-    UserPreferences.set("global", "secUnixLogin", secUnixLogin.isSelected());
-    UserPreferences.set("global", "secPlain", secPlain.isSelected());
     UserPreferences.set("global", "secIdent", secIdent.isSelected());
+    UserPreferences.set("global", "secNone", secNone.isSelected());
+    UserPreferences.set("global", "secPlain", secPlain.isSelected());
+    UserPreferences.set("global", "secUnixLogin", secUnixLogin.isSelected());
+    UserPreferences.set("global", "secVeNCrypt", secVeNCrypt.isSelected());
+    UserPreferences.set("global", "secVnc", secVnc.isSelected());
     UserPreferences.set("global", "SendLocalUsername",
                         sendLocalUsername.isSelected());
-    UserPreferences.set("global", "x509ca", x509ca.getText());
-    UserPreferences.set("global", "x509crl", x509crl.getText());
+    UserPreferences.set("global", "tunnel", tunnel.isSelected());
     if (!sshUser.getText().isEmpty())
       UserPreferences.set("global", "via", sshUser.getText() + "@" +
                           gateway.getText());
     else
       UserPreferences.set("global", "via", gateway.getText());
-    UserPreferences.set("global", "tunnel", tunnel.isSelected());
-
-    // Options with no GUI equivalent
-    UserPreferences.set("global", "AlwaysShowConnectionDialog",
-                        VncViewer.alwaysShowConnectionDialog.getValue());
-    UserPreferences.set("global", "FSAltEnter",
-                        VncViewer.fsAltEnter.getValue());
-    if (VncViewer.preferredEncoding.getValue() != null)
-      UserPreferences.set("global", "Encoding",
-                          VncViewer.preferredEncoding.getValue());
-    if (VncViewer.colors.getValue() != -1)
-      UserPreferences.set("global", "Colors", VncViewer.colors.getValue());
+    UserPreferences.set("global", "x509ca", x509ca.getText());
+    UserPreferences.set("global", "x509crl", x509crl.getText());
   }
 
   JRadioButton addRadioCheckbox(String str, ButtonGroup group, JPanel panel) {
@@ -786,13 +835,12 @@ class OptionsDialog extends Dialog implements ActionListener, ChangeListener,
   public void actionPerformed(ActionEvent e) {
     Object s = e.getSource();
     if (s instanceof JButton && (JButton)s == okButton) {
-      if (cb != null) cb.getOptions();
+      updatePreferences();
+      UserPreferences.save();
+      if (callback != null) callback.getOptions();
       endDialog();
     } else if (s instanceof JButton && (JButton)s == cancelButton) {
       endDialog();
-    } else if (s instanceof JButton && (JButton)s == defSaveButton) {
-      updatePreferences();
-      UserPreferences.save();
     } else if (s instanceof JButton && (JButton)s == defClearButton) {
       UserPreferences.clear();
     } else if (s instanceof JButton && (JButton)s == x509caButton) {
@@ -816,8 +864,8 @@ class OptionsDialog extends Dialog implements ActionListener, ChangeListener,
       if (ret == JFileChooser.APPROVE_OPTION)
         x509crl.setText(fc.getSelectedFile().toString());
     } else if (s instanceof JComboBox && (JComboBox)s == encMethodComboBox) {
-      JComboBox cb = (JComboBox)e.getSource();
-      String encMethod = (String)cb.getSelectedItem();
+      JComboBox comboBox = (JComboBox)e.getSource();
+      String encMethod = (String)comboBox.getSelectedItem();
       if (!encMethodComboBox.isEnabled()) return;
       if (encMethod.equals("Tight + Perceptually Lossless JPEG (LAN)")) {
         allowJpeg.setSelected(true);
@@ -885,17 +933,21 @@ class OptionsDialog extends Dialog implements ActionListener, ChangeListener,
       encTLS.setEnabled(secVeNCrypt.isSelected());
       encX509.setEnabled(secVeNCrypt.isSelected());
       x509ca.setEnabled(encX509.isSelected() && secVeNCrypt.isSelected());
-      x509caButton.setEnabled(encX509.isSelected() && secVeNCrypt.isSelected());
+      x509caButton.setEnabled(encX509.isSelected() &&
+                              secVeNCrypt.isSelected());
       x509crl.setEnabled(encX509.isSelected() && secVeNCrypt.isSelected());
-      x509crlButton.setEnabled(encX509.isSelected() && secVeNCrypt.isSelected());
+      x509crlButton.setEnabled(encX509.isSelected() &&
+                               secVeNCrypt.isSelected());
       secIdent.setEnabled(secVeNCrypt.isSelected());
       secPlain.setEnabled(secVeNCrypt.isSelected());
     }
     if (s instanceof JCheckBox && (JCheckBox)s == encX509) {
       x509ca.setEnabled(encX509.isSelected() && secVeNCrypt.isSelected());
-      x509caButton.setEnabled(encX509.isSelected() && secVeNCrypt.isSelected());
+      x509caButton.setEnabled(encX509.isSelected() &&
+                              secVeNCrypt.isSelected());
       x509crl.setEnabled(encX509.isSelected() && secVeNCrypt.isSelected());
-      x509crlButton.setEnabled(encX509.isSelected() && secVeNCrypt.isSelected());
+      x509crlButton.setEnabled(encX509.isSelected() &&
+                               secVeNCrypt.isSelected());
     }
     if (s instanceof JCheckBox && (JCheckBox)s == secIdent ||
         s instanceof JCheckBox && (JCheckBox)s == secPlain ||
@@ -927,7 +979,7 @@ class OptionsDialog extends Dialog implements ActionListener, ChangeListener,
           desktopSize.getSelectedItem().toString().equals("Auto"))
           desktopSize.setSelectedItem("Server");
         else
-          desktopSize.setEnabled(cb.supportsSetDesktopSize());
+          desktopSize.setEnabled(callback.supportsSetDesktopSize());
       }
     }
     if (s instanceof JComboBox && (JComboBox)s == desktopSize) {
@@ -937,13 +989,7 @@ class OptionsDialog extends Dialog implements ActionListener, ChangeListener,
         vlog.error("Bogus desktop size");
         desktopSize.setSelectedItem(oldDesktopSize);
       } else {
-        String newsize;
-        if (size.mode == Options.SIZE_AUTO)
-          newsize = "Auto";
-        else if (size.mode == Options.SIZE_SERVER)
-          newsize = "Server";
-        else
-          newsize = size.width + "x" + size.height;
+        String newsize = size.getString();
         oldDesktopSize = newsize;
         if (!newsize.equals(newDesktopSize))
           desktopSize.setSelectedItem(newsize);
@@ -951,7 +997,7 @@ class OptionsDialog extends Dialog implements ActionListener, ChangeListener,
           scalingFactor.setEnabled(false);
           scalingFactor.setSelectedItem("100%");
         } else
-          scalingFactor.setEnabled(!VncViewer.embed.getValue());
+          scalingFactor.setEnabled(true);
       }
     }
     if (s instanceof JCheckBox && (JCheckBox)s == tunnel)
@@ -1056,7 +1102,7 @@ class OptionsDialog extends Dialog implements ActionListener, ChangeListener,
   }
 
   void setTightOptions(int encoding) {
-    if (encoding != Encodings.encodingTight) {
+    if (encoding != RFB.ENCODING_TIGHT) {
       allowJpeg.setEnabled(false);
       subsamplingLevel.setEnabled(false);
       subsamplingLabel.setEnabled(false);
@@ -1077,13 +1123,12 @@ class OptionsDialog extends Dialog implements ActionListener, ChangeListener,
       encMethodComboBox.setEnabled(false);
       if (encMethodComboBox.getItemCount() > 5)
         encMethodComboBox.removeItemAt(5);
-      encMethodComboBox.insertItemAt(Encodings.encodingName(encoding), 5);
-      encMethodComboBox.setSelectedItem(Encodings.encodingName(encoding));
+      encMethodComboBox.insertItemAt(RFB.encodingName(encoding), 5);
+      encMethodComboBox.setSelectedItem(RFB.encodingName(encoding));
       encMethodLabel.setText("Encoding type:");
       encMethodLabel.setEnabled(false);
     }
-    if (encoding != Encodings.encodingTight ||
-        VncViewer.compatibleGUI.getValue()) {
+    if (encoding != RFB.ENCODING_TIGHT || VncViewer.compatibleGUI.getValue()) {
       compressionLevel.setMinimum(0);
       compressionLevel.setMaximum(9);
       compressionLabelString = new String("Compression level: ");
@@ -1099,18 +1144,18 @@ class OptionsDialog extends Dialog implements ActionListener, ChangeListener,
     boolean enableVeNCrypt = false;
     for (Iterator<Integer> i = secTypes.iterator(); i.hasNext();) {
       switch ((Integer)i.next()) {
-      case Security.secTypeVeNCrypt:
-        enableVeNCrypt = true;
-        break;
-      case Security.secTypeNone:
-        secNone.setSelected(true);
-        break;
-      case Security.secTypeVncAuth:
-        secVnc.setSelected(true);
-        break;
-      case Security.secTypeUnixLogin:
-        secUnixLogin.setSelected(true);
-        break;
+        case RFB.SECTYPE_VENCRYPT:
+          enableVeNCrypt = true;
+          break;
+        case RFB.SECTYPE_NONE:
+          secNone.setSelected(true);
+          break;
+        case RFB.SECTYPE_VNCAUTH:
+          secVnc.setSelected(true);
+          break;
+        case RFB.SECTYPE_UNIX_LOGIN:
+          secUnixLogin.setSelected(true);
+          break;
       }
     }
 
@@ -1120,56 +1165,64 @@ class OptionsDialog extends Dialog implements ActionListener, ChangeListener,
       secTypesExt = Security.getEnabledExtSecTypes();
       for (Iterator<Integer> iext = secTypesExt.iterator(); iext.hasNext();) {
         switch ((Integer)iext.next()) {
-        case Security.secTypePlain:
-          secVeNCrypt.setSelected(true);
-          encNone.setSelected(true);
-          secPlain.setSelected(true);
-          break;
-        case Security.secTypeIdent:
-          secVeNCrypt.setSelected(true);
-          encNone.setSelected(true);
-          secIdent.setSelected(true);
-          break;
-        case Security.secTypeTLSNone:
-          secVeNCrypt.setSelected(true);
-          encTLS.setSelected(true);
-          secNone.setSelected(true);
-          break;
-        case Security.secTypeTLSVnc:
-          secVeNCrypt.setSelected(true);
-          encTLS.setSelected(true);
-          secVnc.setSelected(true);
-          break;
-        case Security.secTypeTLSPlain:
-          secVeNCrypt.setSelected(true);
-          encTLS.setSelected(true);
-          secPlain.setSelected(true);
-          break;
-        case Security.secTypeTLSIdent:
-          secVeNCrypt.setSelected(true);
-          encTLS.setSelected(true);
-          secIdent.setSelected(true);
-          break;
-        case Security.secTypeX509None:
-          secVeNCrypt.setSelected(true);
-          encX509.setSelected(true);
-          secNone.setSelected(true);
-          break;
-        case Security.secTypeX509Vnc:
-          secVeNCrypt.setSelected(true);
-          encX509.setSelected(true);
-          secVnc.setSelected(true);
-          break;
-        case Security.secTypeX509Plain:
-          secVeNCrypt.setSelected(true);
-          encX509.setSelected(true);
-          secPlain.setSelected(true);
-          break;
-        case Security.secTypeX509Ident:
-          secVeNCrypt.setSelected(true);
-          encX509.setSelected(true);
-          secIdent.setSelected(true);
-          break;
+          case RFB.SECTYPE_NONE:
+            secNone.setSelected(true);
+            encNone.setSelected(true);
+            break;
+          case RFB.SECTYPE_VNCAUTH:
+            secVnc.setSelected(true);
+            encNone.setSelected(true);
+            break;
+          case RFB.SECTYPE_PLAIN:
+            secVeNCrypt.setSelected(true);
+            encNone.setSelected(true);
+            secPlain.setSelected(true);
+            break;
+          case RFB.SECTYPE_IDENT:
+            secVeNCrypt.setSelected(true);
+            encNone.setSelected(true);
+            secIdent.setSelected(true);
+            break;
+          case RFB.SECTYPE_TLS_NONE:
+            secVeNCrypt.setSelected(true);
+            encTLS.setSelected(true);
+            secNone.setSelected(true);
+            break;
+          case RFB.SECTYPE_TLS_VNC:
+            secVeNCrypt.setSelected(true);
+            encTLS.setSelected(true);
+            secVnc.setSelected(true);
+            break;
+          case RFB.SECTYPE_TLS_PLAIN:
+            secVeNCrypt.setSelected(true);
+            encTLS.setSelected(true);
+            secPlain.setSelected(true);
+            break;
+          case RFB.SECTYPE_TLS_IDENT:
+            secVeNCrypt.setSelected(true);
+            encTLS.setSelected(true);
+            secIdent.setSelected(true);
+            break;
+          case RFB.SECTYPE_X509_NONE:
+            secVeNCrypt.setSelected(true);
+            encX509.setSelected(true);
+            secNone.setSelected(true);
+            break;
+          case RFB.SECTYPE_X509_VNC:
+            secVeNCrypt.setSelected(true);
+            encX509.setSelected(true);
+            secVnc.setSelected(true);
+            break;
+          case RFB.SECTYPE_X509_PLAIN:
+            secVeNCrypt.setSelected(true);
+            encX509.setSelected(true);
+            secPlain.setSelected(true);
+            break;
+          case RFB.SECTYPE_X509_IDENT:
+            secVeNCrypt.setSelected(true);
+            encX509.setSelected(true);
+            secIdent.setSelected(true);
+            break;
         }
       }
     }
@@ -1193,69 +1246,69 @@ class OptionsDialog extends Dialog implements ActionListener, ChangeListener,
   }
 
   public void getSecurityOptions() {
-    Security.disableSecType(Security.secTypeNone);
-    Security.disableSecType(Security.secTypeVncAuth);
-    Security.disableSecType(Security.secTypePlain);
-    Security.disableSecType(Security.secTypeIdent);
-    Security.disableSecType(Security.secTypeTLSNone);
-    Security.disableSecType(Security.secTypeTLSVnc);
-    Security.disableSecType(Security.secTypeTLSPlain);
-    Security.disableSecType(Security.secTypeTLSIdent);
-    Security.disableSecType(Security.secTypeX509None);
-    Security.disableSecType(Security.secTypeX509Vnc);
-    Security.disableSecType(Security.secTypeX509Plain);
-    Security.disableSecType(Security.secTypeX509Ident);
-    Security.disableSecType(Security.secTypeUnixLogin);
+    Security.disableSecType(RFB.SECTYPE_NONE);
+    Security.disableSecType(RFB.SECTYPE_VNCAUTH);
+    Security.disableSecType(RFB.SECTYPE_PLAIN);
+    Security.disableSecType(RFB.SECTYPE_IDENT);
+    Security.disableSecType(RFB.SECTYPE_TLS_NONE);
+    Security.disableSecType(RFB.SECTYPE_TLS_VNC);
+    Security.disableSecType(RFB.SECTYPE_TLS_PLAIN);
+    Security.disableSecType(RFB.SECTYPE_TLS_IDENT);
+    Security.disableSecType(RFB.SECTYPE_X509_NONE);
+    Security.disableSecType(RFB.SECTYPE_X509_VNC);
+    Security.disableSecType(RFB.SECTYPE_X509_PLAIN);
+    Security.disableSecType(RFB.SECTYPE_X509_IDENT);
+    Security.disableSecType(RFB.SECTYPE_UNIX_LOGIN);
 
     /* Process security types which don't use encryption */
     if (encNone.isSelected() || !secVeNCrypt.isSelected()) {
       if (secNone.isSelected())
-        Security.enableSecType(Security.secTypeNone);
+        Security.enableSecType(RFB.SECTYPE_NONE);
 
       if (secVnc.isSelected())
-        Security.enableSecType(Security.secTypeVncAuth);
+        Security.enableSecType(RFB.SECTYPE_VNCAUTH);
     }
 
     if (encNone.isSelected() && secVeNCrypt.isSelected()) {
       if (secPlain.isSelected())
-        Security.enableSecType(Security.secTypePlain);
+        Security.enableSecType(RFB.SECTYPE_PLAIN);
 
       if (secIdent.isSelected())
-        Security.enableSecType(Security.secTypeIdent);
+        Security.enableSecType(RFB.SECTYPE_IDENT);
     }
 
     /* Process security types which use TLS encryption */
     if (encTLS.isSelected() && secVeNCrypt.isSelected()) {
       if (secNone.isSelected())
-        Security.enableSecType(Security.secTypeTLSNone);
+        Security.enableSecType(RFB.SECTYPE_TLS_NONE);
 
       if (secVnc.isSelected())
-        Security.enableSecType(Security.secTypeTLSVnc);
+        Security.enableSecType(RFB.SECTYPE_TLS_VNC);
 
       if (secPlain.isSelected())
-        Security.enableSecType(Security.secTypeTLSPlain);
+        Security.enableSecType(RFB.SECTYPE_TLS_PLAIN);
 
       if (secIdent.isSelected())
-        Security.enableSecType(Security.secTypeTLSIdent);
+        Security.enableSecType(RFB.SECTYPE_TLS_IDENT);
     }
 
     /* Process security types which use X509 encryption */
     if (encX509.isSelected() && secVeNCrypt.isSelected()) {
       if (secNone.isSelected())
-        Security.enableSecType(Security.secTypeX509None);
+        Security.enableSecType(RFB.SECTYPE_X509_NONE);
 
       if (secVnc.isSelected())
-        Security.enableSecType(Security.secTypeX509Vnc);
+        Security.enableSecType(RFB.SECTYPE_X509_VNC);
 
       if (secPlain.isSelected())
-        Security.enableSecType(Security.secTypeX509Plain);
+        Security.enableSecType(RFB.SECTYPE_X509_PLAIN);
 
       if (secIdent.isSelected())
-        Security.enableSecType(Security.secTypeX509Ident);
+        Security.enableSecType(RFB.SECTYPE_X509_IDENT);
     }
 
     if (secUnixLogin.isSelected())
-      Security.enableSecType(Security.secTypeUnixLogin);
+      Security.enableSecType(RFB.SECTYPE_UNIX_LOGIN);
   }
 
 }

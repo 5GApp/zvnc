@@ -1,4 +1,4 @@
-/*  Copyright (C)2015-2016 D. R. Commander.  All Rights Reserved.
+/*  Copyright (C)2015-2019 D. R. Commander.  All Rights Reserved.
  *
  *  This is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -15,6 +15,12 @@
  *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
  *  USA.
  */
+
+#ifdef __SUNPRO_C
+/* Oracle Developer Studio sometimes erroneously detects the _throw() macro
+   followed by a semicolon as an unreachable statement. */
+#pragma error_messages(off, E_STATEMENT_NOT_REACHED)
+#endif
 
 #include <string.h>
 #include <dlfcn.h>
@@ -68,18 +74,19 @@ static void netwm_fullscreen(Display *dpy, Window win, int state)
 
 
 #define _throw(msg) {  \
-  jclass _exccls=(*env)->FindClass(env, "java/lang/Exception");  \
+  jclass _exccls = (*env)->FindClass(env, "java/lang/Exception");  \
   if (!_exccls) goto bailout;  \
   (*env)->ThrowNew(env, _exccls, msg);  \
   goto bailout;  \
 }
 
 #define bailif0(f) {  \
-  if(!(f) || (*env)->ExceptionCheck(env)) {  \
+  if (!(f) || (*env)->ExceptionCheck(env)) {  \
     goto bailout;  \
-}}
+  }  \
+}
 
-typedef jboolean JNICALL (*__JAWT_GetAWT_type)(JNIEnv* env, JAWT* awt);
+typedef jboolean JNICALL (*__JAWT_GetAWT_type) (JNIEnv *env, JAWT *awt);
 static __JAWT_GetAWT_type __JAWT_GetAWT = NULL;
 
 static void *handle = NULL;
@@ -116,14 +123,44 @@ JNIEXPORT void JNICALL Java_com_turbovnc_vncviewer_Viewport_x11FullScreen
   if ((dsi = ds->GetDrawingSurfaceInfo(ds)) == NULL)
     _throw("Could not get drawing surface info");
 
-  if ((x11dsi = (JAWT_X11DrawingSurfaceInfo*)dsi->platformInfo) == NULL)
+  if ((x11dsi = (JAWT_X11DrawingSurfaceInfo *)dsi->platformInfo) == NULL)
     _throw("Could not get X11 drawing surface info");
 
+  bailif0(cls = (*env)->GetObjectClass(env, obj));
+
   netwm_fullscreen(x11dsi->display, x11dsi->drawable, on);
+  if (on) {
+    XEvent e;
+    jint leftMon, rightMon, topMon, bottomMon;
+
+    bailif0(fid = (*env)->GetFieldID(env, cls, "leftMon", "I"));
+    leftMon = (*env)->GetIntField(env, obj, fid);
+    bailif0(fid = (*env)->GetFieldID(env, cls, "rightMon", "I"));
+    rightMon = (*env)->GetIntField(env, obj, fid);
+    bailif0(fid = (*env)->GetFieldID(env, cls, "topMon", "I"));
+    topMon = (*env)->GetIntField(env, obj, fid);
+    bailif0(fid = (*env)->GetFieldID(env, cls, "bottomMon", "I"));
+    bottomMon = (*env)->GetIntField(env, obj, fid);
+
+    memset(&e, 0, sizeof(e));
+    e.xclient.type = ClientMessage;
+    e.xclient.message_type = XInternAtom(x11dsi->display,
+                                         "_NET_WM_FULLSCREEN_MONITORS", False);
+    e.xclient.display = x11dsi->display;
+    e.xclient.window = x11dsi->drawable;
+    e.xclient.format = 32;
+    e.xclient.data.l[0] = topMon;
+    e.xclient.data.l[1] = bottomMon;
+    e.xclient.data.l[2] = leftMon;
+    e.xclient.data.l[3] = rightMon;
+    e.xclient.data.l[4] = 1;
+
+    XSendEvent(x11dsi->display, DefaultRootWindow(x11dsi->display), False,
+               SubstructureRedirectMask | SubstructureNotifyMask, &e);
+  }
   XSync(x11dsi->display, False);
 
-  if ((cls = (*env)->GetObjectClass(env, obj)) == NULL ||
-      (fid = (*env)->GetFieldID(env, cls, "x11win", "J")) == 0)
+  if ((fid = (*env)->GetFieldID(env, cls, "x11win", "J")) == 0)
     _throw("Could not store X window handle");
   (*env)->SetLongField(env, obj, fid, x11dsi->drawable);
 
@@ -169,15 +206,16 @@ JNIEXPORT void JNICALL Java_com_turbovnc_vncviewer_Viewport_grabKeyboard
   if ((dsi = ds->GetDrawingSurfaceInfo(ds)) == NULL)
     _throw("Could not get drawing surface info");
 
-  if ((x11dsi = (JAWT_X11DrawingSurfaceInfo*)dsi->platformInfo) == NULL)
+  if ((x11dsi = (JAWT_X11DrawingSurfaceInfo *)dsi->platformInfo) == NULL)
     _throw("Could not get X11 drawing surface info");
 
   XSync(x11dsi->display, False);
   if (on) {
     int count = 5;
+
     while ((ret = XGrabKeyboard(x11dsi->display, x11dsi->drawable, True,
-                                GrabModeAsync, GrabModeAsync, CurrentTime))
-           != GrabSuccess) {
+                                GrabModeAsync, GrabModeAsync,
+                                CurrentTime)) != GrabSuccess) {
       switch (ret) {
         case AlreadyGrabbed:
           _throw("Could not grab keyboard: already grabbed by another application");
@@ -200,7 +238,7 @@ JNIEXPORT void JNICALL Java_com_turbovnc_vncviewer_Viewport_grabKeyboard
     if (pointer) {
       ret = XGrabPointer(x11dsi->display, x11dsi->drawable, True,
                          ButtonPressMask | ButtonReleaseMask |
-                         ButtonMotionMask | PointerMotionMask, GrabModeAsync,
+                           ButtonMotionMask | PointerMotionMask, GrabModeAsync,
                          GrabModeAsync, None, None, CurrentTime);
       switch (ret) {
         case AlreadyGrabbed:
@@ -215,7 +253,7 @@ JNIEXPORT void JNICALL Java_com_turbovnc_vncviewer_Viewport_grabKeyboard
     }
 
     printf("TurboVNC Helper: Grabbed keyboard%s for window 0x%.8lx\n",
-           pointer? " & pointer" : "", x11dsi->drawable);
+           pointer ? " & pointer" : "", x11dsi->drawable);
   } else {
     XUngrabKeyboard(x11dsi->display, CurrentTime);
     if (pointer)
@@ -270,7 +308,9 @@ JNIEXPORT void JNICALL Java_com_turbovnc_vncviewer_Viewport_setupExtInput
   XDevice *device = NULL;
   int nDevices = 0, i, ci, ai, nEvents = 0;
   int buttonPressType = -1, buttonReleaseType = -1, motionType = -1;
-  XEventClass events[100] = { -1, -1, -1, -1, -1, -1, -1, -1, -1, -1};
+  XEventClass events[100] = { (XEventClass)-1, (XEventClass)-1,
+    (XEventClass)-1, (XEventClass)-1, (XEventClass)-1, (XEventClass)-1,
+    (XEventClass)-1, (XEventClass)-1, (XEventClass)-1, (XEventClass)-1 };
   jobject extInputDevice;
 
   if ((dpy = XOpenDisplay(NULL)) == NULL)
@@ -294,7 +334,8 @@ JNIEXPORT void JNICALL Java_com_turbovnc_vncviewer_Viewport_setupExtInput
     if (devInfo[i].type == None)
       continue;
     type = XGetAtomName(dpy, devInfo[i].type);
-    if (!strcmp(type, "MOUSE") || !strcmp(type, "KEYBOARD"))  {
+    if (!strcmp(type, "MOUSE") || !strcmp(type, "KEYBOARD") ||
+        !strcmp(type, "xwayland-pointer")) {
       XFree(type);
       continue;
     }
@@ -339,6 +380,7 @@ JNIEXPORT void JNICALL Java_com_turbovnc_vncviewer_Viewport_setupExtInput
         case ButtonClass:
         {
           XButtonInfoPtr b = (XButtonInfoPtr)classInfo;
+
           SET_INT(eidcls, extInputDevice, numButtons, b->num_buttons);
           canGenerate |= rfbGIIButtonPressMask | rfbGIIButtonReleaseMask;
           break;
@@ -403,7 +445,7 @@ JNIEXPORT void JNICALL Java_com_turbovnc_vncviewer_Viewport_setupExtInput
         nEvents++;
       }
     }
-    XCloseDevice(dpy, device);  device=NULL;
+    XCloseDevice(dpy, device);  device = NULL;
 
     bailif0(mid = (*env)->GetMethodID(env, cls, "addInputDevice",
             "(Lcom/turbovnc/rfb/ExtInputDevice;)V"));
@@ -422,7 +464,7 @@ JNIEXPORT void JNICALL Java_com_turbovnc_vncviewer_Viewport_setupExtInput
   SET_INT(cls, obj, buttonPressType, buttonPressType);
   SET_INT(cls, obj, buttonReleaseType, buttonReleaseType);
   SET_INT(cls, obj, motionType, motionType);
-  SET_LONG(cls, obj, x11dpy, (jlong)dpy);
+  SET_LONG(cls, obj, x11dpy, (jlong)(intptr_t)dpy);
 
   printf("TurboVNC Helper: Listening for XInput events on %s (window 0x%.8x)\n",
          DisplayString(dpy), (unsigned int)win);
@@ -438,6 +480,7 @@ JNIEXPORT jboolean JNICALL Java_com_turbovnc_vncviewer_Viewport_processExtInputE
 {
   jclass cls;
   jfieldID fid;
+
   union {
     int type;  XEvent xe;  XDeviceMotionEvent motion;
     XDeviceButtonEvent button;
@@ -455,7 +498,7 @@ JNIEXPORT jboolean JNICALL Java_com_turbovnc_vncviewer_Viewport_processExtInputE
   bailif0(fid = (*env)->GetFieldID(env, cls, "motionType", "I"));
   motionType = (*env)->GetIntField(env, obj, fid);
   bailif0(fid = (*env)->GetFieldID(env, cls, "x11dpy", "J"));
-  bailif0(dpy = (Display *)(*env)->GetLongField(env, obj, fid));
+  bailif0(dpy = (Display *)(intptr_t)(*env)->GetLongField(env, obj, fid));
 
   while (XCheckTypedEvent(dpy, type, &e.xe)) {
 
@@ -476,12 +519,11 @@ JNIEXPORT jboolean JNICALL Java_com_turbovnc_vncviewer_Viewport_processExtInputE
       SET_INT(eventcls, event, firstValuator, e.motion.first_axis);
 
       bailif0(fid = (*env)->GetFieldID(env, eventcls, "valuators", "[I"));
-      bailif0(jvaluators =
-              (jintArray)(*env)->GetObjectField(env, event, fid));
+      bailif0(jvaluators = (jintArray)(*env)->GetObjectField(env, event, fid));
       for (i = 0; i < e.motion.axes_count; i++)
         valuators[i] = e.motion.axis_data[i];
       (*env)->SetIntArrayRegion(env, jvaluators, 0, e.motion.axes_count,
-        valuators);
+                                valuators);
       retval = JNI_TRUE;
 
     } else if (e.type == buttonPressType || e.type == buttonReleaseType) {
@@ -502,13 +544,12 @@ JNIEXPORT jboolean JNICALL Java_com_turbovnc_vncviewer_Viewport_processExtInputE
       SET_INT(eventcls, event, firstValuator, e.button.first_axis);
       SET_INT(eventcls, event, buttonNumber, e.button.button);
       bailif0(fid = (*env)->GetFieldID(env, eventcls, "valuators", "[I"));
-      bailif0(jvaluators =
-              (jintArray)(*env)->GetObjectField(env, event, fid));
+      bailif0(jvaluators = (jintArray)(*env)->GetObjectField(env, event, fid));
       for (i = 0; i < e.button.axes_count; i++)
         valuators[i] = e.button.axis_data[i];
       (*env)->SetIntArrayRegion(env, jvaluators, 0, e.button.axes_count,
                                 valuators);
-      retval = JNI_TRUE;
+      return JNI_TRUE;
 
     }
   }
@@ -527,7 +568,7 @@ JNIEXPORT void JNICALL Java_com_turbovnc_vncviewer_Viewport_cleanupExtInput
 
   bailif0(cls = (*env)->GetObjectClass(env, obj));
   bailif0(fid = (*env)->GetFieldID(env, cls, "x11dpy", "J"));
-  bailif0(dpy = (Display *)(*env)->GetLongField(env, obj, fid));
+  bailif0(dpy = (Display *)(intptr_t)(*env)->GetLongField(env, obj, fid));
   printf("TurboVNC Helper: Shutting down XInput listener on display %s\n",
          DisplayString(dpy));
   XCloseDisplay(dpy);

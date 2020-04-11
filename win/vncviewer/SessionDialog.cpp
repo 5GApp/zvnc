@@ -50,9 +50,8 @@ SessionDialog::~SessionDialog()
 
 INT_PTR SessionDialog::DoDialog()
 {
-  return DialogBoxParam(pApp->m_instance,
-                        MAKEINTRESOURCE(IDD_SESSION_DLG), NULL,
-                        (DLGPROC) SessDlgProc, (LPARAM) this);
+  return DialogBoxParam(pApp->m_instance, MAKEINTRESOURCE(IDD_SESSION_DLG),
+                        NULL, (DLGPROC)SessDlgProc, (LPARAM)this);
 }
 
 
@@ -76,7 +75,7 @@ BOOL CALLBACK SessionDialog::SessDlgProc(HWND hwnd, UINT uMsg, WPARAM wParam,
     case WM_INITDIALOG:
     {
       SetWindowLongPtr(hwnd, GWLP_USERDATA, lParam);
-      SessionDialog *_this = (SessionDialog *) lParam;
+      SessionDialog *_this = (SessionDialog *)lParam;
       CenterWindow(hwnd);
       _this->m_cc->m_hSess = hwnd;
 
@@ -131,7 +130,7 @@ BOOL CALLBACK SessionDialog::SessDlgProc(HWND hwnd, UINT uMsg, WPARAM wParam,
             case CBN_SELENDOK:
             {
               int a = (int)SendMessage(hcombo, CB_GETCURSEL, 0, 0L);
-              SendMessage(hcombo, CB_GETLBTEXT, a, (LPARAM)(int FAR*)buffer);
+              SendMessage(hcombo, CB_GETLBTEXT, a, (LPARAM)(int FAR *)buffer);
               _this->m_pOpt->LoadOpt(buffer, KEY_VNCVIEWER_HISTORY);
               EnableConnectButton(hwnd, TRUE);
               SetFocus(hcombo);
@@ -170,10 +169,9 @@ BOOL CALLBACK SessionDialog::SessDlgProc(HWND hwnd, UINT uMsg, WPARAM wParam,
             return TRUE;
           if (!ParseDisplay(display, _countof(display), tmphost,
                             _countof(tmphost), &_this->m_cc->m_port)) {
-            MessageBox(NULL,
-                "Invalid VNC server specified.\n\r"
-                "Server should be of the form host:display.",
-                "Connection setup", MB_OK | MB_ICONEXCLAMATION);
+            MessageBox(NULL, "Invalid VNC server specified.\n\r"
+                       "Server should be of the form host:display.",
+                       "Connection setup", MB_OK | MB_ICONEXCLAMATION);
             return TRUE;
           } else {
             STRCPY(_this->m_cc->m_host, tmphost);
@@ -204,10 +202,11 @@ BOOL CALLBACK SessionDialog::SessDlgProc(HWND hwnd, UINT uMsg, WPARAM wParam,
             _itoa_s(i, valname, _countof(valname), 10);
             dwbuflen = 255;
             if (RegQueryValueEx(_this->m_hRegKey, (LPTSTR)valname, NULL, NULL,
-                (LPBYTE)buf, (LPDWORD)&dwbuflen) != ERROR_SUCCESS)
+                                (LPBYTE)buf,
+                                (LPDWORD)&dwbuflen) != ERROR_SUCCESS)
               break;
             SendMessage(hcombo, CB_INSERTSTRING, (WPARAM)i,
-                        (LPARAM)(int FAR*)buf);
+                        (LPARAM)(int FAR *)buf);
           }
           SetDlgItemText(hwnd, IDC_HOSTNAME_EDIT, _this->m_pOpt->m_display);
           SetFocus(hOptionButton);

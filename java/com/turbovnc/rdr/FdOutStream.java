@@ -1,7 +1,7 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
  * Copyright 2011 Pierre Ossman for Cendio AB
  * Copyright (C) 2012, 2014 Brian P. Hinz
- * Copyright (C) 2012 D. R. Commander.  All Rights Reserved.
+ * Copyright (C) 2012, 2018 D. R. Commander.  All Rights Reserved.
  *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -31,7 +31,7 @@ public class FdOutStream extends OutStream {
 
   public FdOutStream(FileDescriptor fd_, boolean blocking_, int timeoutms_,
                      int bufSize_) {
-    fd = fd_; blocking = blocking_; timeoutms = timeoutms_;
+    fd = fd_;  blocking = blocking_;  timeoutms = timeoutms_;
     bufSize = ((bufSize_ > 0) ? bufSize_ : DEFAULT_BUF_SIZE);
     b = new byte[bufSize];
     offset = 0;
@@ -90,14 +90,14 @@ public class FdOutStream extends OutStream {
   }
 
   private int writeWithTimeout(byte[] data, int dataPtr, int length,
-                               int timeoutms) {
+                               int timeoutms_) {
     int n;
 
     do {
 
       Integer tv;
-      if (timeoutms != -1) {
-        tv = new Integer(timeoutms);
+      if (timeoutms_ != -1) {
+        tv = Integer.valueOf(timeoutms_);
       } else {
         tv = null;
       }

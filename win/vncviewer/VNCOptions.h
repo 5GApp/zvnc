@@ -1,4 +1,4 @@
-//  Copyright (C) 2010-2016 D. R. Commander. All Rights Reserved.
+//  Copyright (C) 2010-2017 D. R. Commander. All Rights Reserved.
 //  Copyright (C) 2005-2006 Sun Microsystems, Inc. All Rights Reserved.
 //  Copyright (C) 2000 Tridia Corporation All Rights Reserved.
 //  Copyright (C) 1999 AT&T Laboratories Cambridge. All Rights Reserved.
@@ -26,6 +26,8 @@
 
 #pragma once
 
+#include "ScreenSet.h"
+
 #define LASTENCODING rfbEncodingZlibHex
 
 #define NOCURSOR 0
@@ -35,6 +37,11 @@
 #define MAX_LEN_COMBO 5
 
 #define MAX_SCALING_FACTOR 1000
+
+// With a max. of 255 screens and a max. framebuffer size of 32767x32767,
+// desktop size strings can get quite large, but this should accommodate the
+// worst case.  Fortunately we're not running MS-DOS anymore.
+#define MAX_DS_STR 8192
 
 #define SPAN_OPTS 3
 enum { SPAN_PRIMARY = 0, SPAN_ALL, SPAN_AUTO };
@@ -56,26 +63,66 @@ struct COMBOSTRING {
 #define SIZE_MANUAL 1
 #define SIZE_AUTO   2
 
-typedef struct _DesktopSize {
-  void set(int mode_, int width_, int height_) {
+struct DesktopSize {
+
+  DesktopSize() : mode(0), width(0), height(0) {}
+
+  void set(int mode_, int width_, int height_)
+  {
     mode = mode_;  width = width_;  height = height_;
   }
 
-  bool operator != (struct _DesktopSize& size) {
-    return mode != size.mode || width != size.width || height != size.height;
+  void set(int mode_, int width_, int height_, ScreenSet &layout_)
+  {
+    mode = mode_;  width = width_;  height = height_;
+    layout = layout_;
+  }
+
+  bool operator != (DesktopSize &size)
+  {
+    return mode != size.mode || width != size.width || height != size.height ||
+           layout != size.layout;
+  }
+
+  void getString(char *buf, int buflen)
+  {
+    if (mode == SIZE_AUTO) {
+      snprintf(buf, buflen, "Auto");
+      return;
+    } else if (mode == SIZE_SERVER) {
+      snprintf(buf, buflen, "Server");
+      return;
+    } else {
+      if (layout.num_screens() < 2) {
+        snprintf(buf, buflen, "%dx%d\n", width, height);
+        return;
+      } else {
+        buf[0] = '\0';
+        ScreenSet::const_iterator iter, finalIter = layout.end();
+
+        finalIter--;
+        for (iter = layout.begin(); iter != layout.end(); ++iter) {
+          snprintf(&buf[strlen(buf)], buflen - strlen(buf), "%dx%d+%d+%d%s",
+                   WidthOf(iter->dimensions), HeightOf(iter->dimensions),
+                   iter->dimensions.left, iter->dimensions.top,
+                   iter != finalIter ? "," : "");
+        }
+      }
+    }
   }
 
   int mode;
   int width;
   int height;
-} DesktopSize;
+  ScreenSet layout;
+};
 
 
 class VNCOptions
 {
   public:
     VNCOptions();
-    VNCOptions& operator = (VNCOptions& s);
+    VNCOptions &operator = (VNCOptions &s);
     virtual ~VNCOptions();
 
     // Save and load a set of options from a config file
@@ -83,90 +130,90 @@ class VNCOptions
     void Load(char *fname);
     void VNCOptions::LoadOpt(char subkey[256], char keyname[256]);
     int VNCOptions::read(HKEY hkey, char *name, int retval);
-    void VNCOptions::save(HKEY hkey ,char *name, int value);
+    void VNCOptions::save(HKEY hkey, char *name, int value);
     void VNCOptions::LoadGenOpt();
     void VNCOptions::SaveGenOpt();
     void VNCOptions::delkey(char subkey[256], char keyname[256]);
     void VNCOptions::SaveOpt(char subkey[256], char keyname[256]);
 
     // process options
-    bool  m_listening;
-    bool  m_ipv6;
-    int   m_listenPort;
+    bool m_listening;
+    bool m_ipv6;
+    int m_listenPort;
     char m_display[256];
-    bool  m_toolbar;
-    bool  m_skipprompt;
-    int   m_historyLimit;
-    bool  m_connectionSpecified;
-    bool  m_configSpecified;
+    bool m_toolbar;
+    bool m_skipprompt;
+    int m_historyLimit;
+    bool m_connectionSpecified;
+    bool m_configSpecified;
     char m_configFilename[_MAX_PATH];
     unsigned char m_encPasswd[8];
-    bool  m_restricted;
+    bool m_restricted;
     bool m_tunnel;
     char m_gatewayHost[256];
 
     // default connection options - can be set through Dialog
-    bool  m_ViewOnly;
-    bool  m_FullScreen;
-    int   m_Span;
-    bool  m_CurrentMonitorIsPrimary;
-    bool  m_Use8Bit;
-    bool  m_DoubleBuffer;
-    int   m_PreferredEncoding;
-    int   m_LastEncoding;
-    bool  m_SwapMouse;
-    bool  m_Emul3Buttons;
-    int   m_Emul3Timeout;
-    int   m_Emul3Fuzz;
-    bool  m_Shared;
-    bool  m_CU;
-    bool  m_DeiconifyOnBell;
-    bool  m_DisableClipboard;
-    int   m_localCursor;
-    bool  m_scaling;
-    bool  m_FitWindow;
-    int   m_scale_num, m_scale_den; // Numerator & denominator
-    char  m_oldScalingFactor[20];
-    int   m_subsampLevel;
-    int   m_compressLevel;
-    bool  m_compatibleGUI;
-    bool  m_enableJpegCompression;
-    int   m_jpegQualityLevel;
-    bool  m_requestShapeUpdates;
-    bool  m_ignoreShapeUpdates;
+    bool m_ViewOnly;
+    bool m_FullScreen;
+    int m_Span;
+    bool m_CurrentMonitorIsPrimary;
+    bool m_Use8Bit;
+    bool m_DoubleBuffer;
+    int m_PreferredEncoding;
+    int m_LastEncoding;
+    bool m_SwapMouse;
+    bool m_Emul3Buttons;
+    int m_Emul3Timeout;
+    int m_Emul3Fuzz;
+    bool m_Shared;
+    bool m_CU;
+    bool m_DeiconifyOnBell;
+    bool m_DisableClipboard;
+    int m_localCursor;
+    bool m_scaling;
+    bool m_FitWindow;
+    int m_scale_num, m_scale_den;    // Numerator & denominator
+    char m_oldScalingFactor[20];
+    int m_subsampLevel;
+    int m_compressLevel;
+    bool m_compatibleGUI;
+    bool m_enableJpegCompression;
+    int m_jpegQualityLevel;
+    bool m_requestShapeUpdates;
+    bool m_ignoreShapeUpdates;
     DesktopSize m_desktopSize;
-    char  m_oldDesktopSize[12];
+    char m_oldDesktopSize[MAX_DS_STR];
 
     // Keyboard can be specified on command line as 8-digit hex
     char m_kbdname[9];
-    bool  m_kbdSpecified;
+    bool m_kbdSpecified;
 
     // Connection options that can't be set through the dialog
 
     // Which encodings do we allow?
-    bool  m_UseEnc[LASTENCODING + 1];
+    bool m_UseEnc[LASTENCODING + 1];
 
     char m_host[256];
-    int   m_port;
+    int m_port;
 
-    bool  m_FSAltEnter;
-    int   m_GrabKeyboard;
-    bool  m_noUnixLogin;
-    char  m_user[256];
+    bool m_FSAltEnter;
+    int m_GrabKeyboard;
+    bool m_noUnixLogin;
+    char m_user[256];
 
-    bool  m_autoPass;
+    bool m_autoPass;
 
     // Logging
-    int   m_logLevel;
-    bool  m_logToFile, m_logToConsole;
+    int m_logLevel;
+    bool m_logToFile, m_logToConsole;
     char m_logFilename[_MAX_PATH];
 
     // for debugging purposes
-    int   m_delay;
+    int m_delay;
 
     // Benchmark stuff
-    FILE  *m_benchFile;
-    int   m_benchWarmup, m_benchIter;
+    FILE *m_benchFile;
+    int m_benchWarmup, m_benchIter;
 
     INT_PTR DoDialog(bool running = false);
     BOOL RaiseDialog();
@@ -174,10 +221,10 @@ class VNCOptions
 
     void SetFromCommandLine(LPTSTR szCmdLine);
 
-    static BOOL CALLBACK DlgProc(HWND hwndDlg, UINT uMsg,
-                                 WPARAM wParam, LPARAM lParam);
-    static BOOL CALLBACK DlgProcEncOptions(HWND hwnd, UINT uMsg,
-                                           WPARAM wParam, LPARAM lParam);
+    static BOOL CALLBACK DlgProc(HWND hwndDlg, UINT uMsg, WPARAM wParam,
+                                 LPARAM lParam);
+    static BOOL CALLBACK DlgProcEncOptions(HWND hwnd, UINT uMsg, WPARAM wParam,
+                                           LPARAM lParam);
     static BOOL CALLBACK DlgProcConnOptions(HWND hwnd, UINT uMsg,
                                             WPARAM wParam, LPARAM lParam);
     static BOOL CALLBACK DlgProcGlobalOptions(HWND hwnd, UINT uMsg,
@@ -210,6 +257,6 @@ class VNCOptions
     bool m_running;
 
     void setHistoryLimit(int newLimit);
-  };
+};
 
-#endif // VNCOPTIONS_H__
+#endif  // VNCOPTIONS_H__

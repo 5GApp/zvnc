@@ -9,7 +9,10 @@ endif()
 set(KEYTOOL "${Java_PATH}/keytool")
 set(JARSIGNER "${Java_PATH}/jarsigner")
 
-if(JAVA_KEY_ALIAS)
+if(JAVA_KEYSTORE STREQUAL "turbovnc.keystore")
+  message(STATUS "Signing ${JAR_FILE} using self-signed certificate")
+  set(JAVA_SELF_SIGNED 1)
+elseif(JAVA_KEY_ALIAS)
   if((NOT JAVA_KEYSTORE_PASS) OR (NOT JAVA_KEY_PASS))
     message(FATAL_ERROR "When JAVA_KEY_ALIAS is specified, JAVA_KEYSTORE_PASS and JAVA_KEY_PASS must also be specified.")
   endif()
@@ -20,21 +23,7 @@ if(JAVA_KEY_ALIAS)
   endif()
   set(JAVA_SELF_SIGNED 0)
 else()
-  message(STATUS "Signing ${JAR_FILE} using self-signed certificate")
-  file(REMOVE ${JAR_FILE}.keystore)
-  execute_process(COMMAND
-    ${KEYTOOL} -genkey -alias TurboVNC -keystore ${JAR_FILE}.keystore
-      -keyalg RSA -storepass turbovnc -keypass turbovnc -validity 7300
-      -dname "CN=TurboVNC, OU=Software Development, O=The VirtualGL Project, L=Austin, S=Texas, C=US"
-    RESULT_VARIABLE RESULT OUTPUT_VARIABLE OUTPUT ERROR_VARIABLE ERROR)
-  if(NOT RESULT EQUAL 0)
-    message(FATAL_ERROR "${KEYTOOL} failed:\n${ERROR}")
-  endif()
-  set(JAVA_KEYSTORE "${JAR_FILE}.keystore")
-  set(JAVA_KEYSTORE_PASS "turbovnc")
-  set(JAVA_KEY_PASS "turbovnc")
-  set(JAVA_KEY_ALIAS "TurboVNC")
-  set(JAVA_SELF_SIGNED 1)
+  message(FATAL_ERROR "JAVA_KEY_ALIAS must be specified.")
 endif()
 
 if(JAVA_KEYSTORE)
@@ -69,6 +58,11 @@ endif()
 if(NOT JAVA_SELF_SIGNED AND JAVA_TSA_URL)
   message(STATUS "Using timestamp authority ${JAVA_TSA_URL}")
   set(ARGS ${ARGS} -tsa ${JAVA_TSA_URL})
+endif()
+
+if(JAVA_TSA_ALG)
+  message(STATUS "Using TSA message digest algorithm ${JAVA_TSA_ALG}")
+  set(ARGS ${ARGS} -tsadigestalg ${JAVA_TSA_ALG})
 endif()
 
 execute_process(COMMAND ${JARSIGNER} ${ARGS} ${JAR_FILE} ${JAVA_KEY_ALIAS}

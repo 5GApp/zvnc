@@ -1,4 +1,5 @@
-//  Copyright (C) 2010, 2012-2013, 2015-2016 D. R. Commander. All Rights Reserved.
+//  Copyright (C) 2010, 2012-2013, 2015-2017, 2020 D. R. Commander.
+//                                                 All Rights Reserved.
 //  Copyright (C) 2005-2006 Sun Microsystems, Inc. All Rights Reserved.
 //  Copyright (C) 2004 Landmark Graphics Corporation. All Rights Reserved.
 //  Copyright (C) 2000 Tridia Corporation. All Rights Reserved.
@@ -42,8 +43,8 @@
 #include "ExtInputEvent.h"
 extern "C" {
 #include "wintab/Utils.h"
-#define PACKETDATA (PK_CURSOR | PK_X | PK_Y | PK_NORMAL_PRESSURE | \
-  PK_ORIENTATION | PK_BUTTONS | PK_CHANGED)
+#define PACKETDATA (PK_CURSOR | PK_X | PK_Y | PK_NORMAL_PRESSURE |  \
+                    PK_ORIENTATION | PK_BUTTONS | PK_CHANGED)
 #define PACKETMODE 0
 #include "wintab/pktdef.h"
 }
@@ -56,17 +57,12 @@ extern "C" {
 #define TIGHT_ZLIB_BUFFER_SIZE 512
 
 
-#define WidthOf(rect) ((rect).right - (rect).left)
-#define HeightOf(rect) ((rect).bottom - (rect).top)
-
-
 class ClientConnection;
-typedef void (ClientConnection:: *tightFilterFunc)(int, int, int);
-typedef void (ClientConnection:: *setPixelsFunc)(char *, int, int, int, int);
+typedef void (ClientConnection::*tightFilterFunc)(int, int, int);
+typedef void (ClientConnection::*setPixelsFunc)(char *, int, int, int, int);
 
 
-typedef struct _UpdateList
-{
+typedef struct _UpdateList {
   rfbFramebufferUpdateRectHeader region;
   COLORREF fillColor;
   struct _UpdateList *next;
@@ -85,7 +81,7 @@ class ClientConnection : public omni_thread
     void Run();
     void KillThread();
     void CopyOptions(ClientConnection *source);
-    int  LoadConnection(char *fname, bool sess);
+    int LoadConnection(char *fname, bool sess);
     void UnloadConnection() { m_opts.m_configSpecified = false; }
 
     int m_port;
@@ -163,12 +159,14 @@ class ClientConnection : public omni_thread
     void Update(RECT *pRect);
     void SizeWindow(bool centered, bool resizeFullScreen = false,
                     bool manual = false);
+    void GetActualClientRect(RECT *rect);
     void PositionWindow(RECT &fullwinrect, bool centered,
                         bool dimensionsOnly = false);
     void PositionChildWindow();
     bool ScrollScreen(int dx, int dy);
     void UpdateScrollbars();
     void EnableFullControlOptions();
+    void EnableZoomOptions();
     void EnableAction(int id, bool enable);
 
     void InvalidateScreenRect(const RECT *pRect);
@@ -185,7 +183,9 @@ class ClientConnection : public omni_thread
 
     void ReadNewFBSize(rfbFramebufferUpdateRectHeader *pfburh);
     void ReadExtendedDesktopSize(rfbFramebufferUpdateRectHeader *pfburh);
+    ScreenSet ComputeScreenLayout(int width, int height);
     void SendDesktopSize(int width, int height);
+    void SendDesktopSize(int width, int height, ScreenSet layout);
 
     void InitSetPixels(void);
     setPixelsFunc setPixels;
@@ -200,18 +200,18 @@ class ClientConnection : public omni_thread
     // ClientConnectionTight.cpp
     void ReadTightRect(rfbFramebufferUpdateRectHeader *pfburh);
     int ReadCompactLen();
-    int InitFilterCopy (int rw, int rh);
-    int InitFilterGradient (int rw, int rh);
-    int InitFilterPalette (int rw, int rh);
-    void FilterCopy8 (int srcx, int srcy, int numRows);
-    void FilterCopy16 (int srcx, int srcy, int numRows);
-    void FilterCopy24 (int srcx, int srcy, int numRows);
-    void FilterCopy32 (int srcx, int srcy, int numRows);
-    void FilterGradient8 (int srcx, int srcy, int numRows);
-    void FilterGradient16 (int srcx, int srcy, int numRows);
-    void FilterGradient24 (int srcx, int srcy, int numRows);
-    void FilterGradient32 (int srcx, int srcy, int numRows);
-    void FilterPalette (int srcx, int srcy, int numRows);
+    int InitFilterCopy(int rw, int rh);
+    int InitFilterGradient(int rw, int rh);
+    int InitFilterPalette(int rw, int rh);
+    void FilterCopy8(int srcx, int srcy, int numRows);
+    void FilterCopy16(int srcx, int srcy, int numRows);
+    void FilterCopy24(int srcx, int srcy, int numRows);
+    void FilterCopy32(int srcx, int srcy, int numRows);
+    void FilterGradient8(int srcx, int srcy, int numRows);
+    void FilterGradient16(int srcx, int srcy, int numRows);
+    void FilterGradient24(int srcx, int srcy, int numRows);
+    void FilterGradient32(int srcx, int srcy, int numRows);
+    void FilterPalette(int srcx, int srcy, int numRows);
     void DecompressJpegRect(int x, int y, int w, int h);
 
     bool zlibDecompress(unsigned char *from_buf, unsigned char *to_buf,
@@ -250,11 +250,11 @@ class ClientConnection : public omni_thread
     void SetFullScreenMode(bool enable, bool suppressPrompt = false);
     bool InFullScreenMode();
     void RealiseFullScreenMode(bool suppressPrompt);
-    void GetFullScreenMetrics(RECT &screenArea, RECT &workArea,
-                              int spanMode);
+    ScreenSet GetFullScreenMetrics(RECT &screenArea, RECT &workArea,
+                                   int spanMode, bool verbose);
     void GetFullScreenMetrics(RECT &screenArea, RECT &workArea)
     {
-      GetFullScreenMetrics(screenArea, workArea, m_opts.m_Span);
+      GetFullScreenMetrics(screenArea, workArea, m_opts.m_Span, true);
     }
     bool BumpScroll(int x, int y);
 
@@ -267,7 +267,7 @@ class ClientConnection : public omni_thread
     void ReadSetColorMapEntries();
     void ReadBell();
 
-    void SendRFBMsg(CARD8 msgType, void* data, int length);
+    void SendRFBMsg(CARD8 msgType, void *data, int length);
     void ReadExact(char *buf, int bytes);
     void ReadString(char *buf, int length);
     void WriteExact(char *buf, int bytes);
@@ -306,7 +306,7 @@ class ClientConnection : public omni_thread
     void SetupSSHTunnel(void);
 
     // This is what controls the thread
-    void * run_undetached(void* arg);
+    void *run_undetached(void *arg);
     bool m_bKillThread;
 
     // Utilities
@@ -319,14 +319,15 @@ class ClientConnection : public omni_thread
       COLORREF oldbgcol = SetBkColor(m_hBitmapDC, color);
       // This is the call MFC uses for FillSolidRect.  Who am I to argue?
       ExtTextOut(m_hBitmapDC, 0, 0, ETO_OPAQUE, pRect, NULL, 0, NULL);
-    };
+    }
 
-    inline void FillSolidRect(int x, int y, int w, int h, COLORREF color) {
+    inline void FillSolidRect(int x, int y, int w, int h, COLORREF color)
+    {
       RECT r;
       r.left = x;   r.right = x + w;
       r.top = y;    r.bottom = y + h;
       FillSolidRect(&r, color);
-    };
+    }
 
     // how many other windows are owned by this process?
     unsigned int CountProcessOtherWindows();
@@ -413,9 +414,11 @@ class ClientConnection : public omni_thread
     // Desktop resizing
     bool m_supportsSetDesktopSize, m_pendingServerResize;
     ScreenSet m_screenLayout;
+    bool m_checkLayout;
     bool m_waitingOnResizeTimer;
     UINT_PTR m_resizeTimer;
     int m_autoResizeWidth, m_autoResizeHeight;
+    bool m_serverXinerama;
 
     // Dormant basically means minimized;  updates will not be requested
     // while dormant.
@@ -507,47 +510,47 @@ class TempDC
 // Define rs, rm, bs, bm, gs & gm before using, e.g. with the following:
 
 #define SETUP_COLOR_SHORTCUTS  \
-   CARD8 rs = m_myFormat.redShift;   CARD16 rm = m_myFormat.redMax;    \
-   CARD8 gs = m_myFormat.greenShift; CARD16 gm = m_myFormat.greenMax;  \
-   CARD8 bs = m_myFormat.blueShift;  CARD16 bm = m_myFormat.blueMax;   \
+  CARD8 rs = m_myFormat.redShift;    CARD16 rm = m_myFormat.redMax;    \
+  CARD8 gs = m_myFormat.greenShift;  CARD16 gm = m_myFormat.greenMax;  \
+  CARD8 bs = m_myFormat.blueShift;   CARD16 bm = m_myFormat.blueMax;   \
 
 // read a pixel from the given address and return a color value
 #define COLOR_FROM_PIXEL8_ADDRESS(p) (  \
-  PALETTERGB( (int) (((*(CARD8 *)(p) >> rs) & rm) * 255 / rm),  \
-              (int) (((*(CARD8 *)(p) >> gs) & gm) * 255 / gm),  \
-              (int) (((*(CARD8 *)(p) >> bs) & bm) * 255 / bm) ))
+  PALETTERGB( (int)(((*(CARD8 *)(p) >> rs) & rm) * 255 / rm),  \
+              (int)(((*(CARD8 *)(p) >> gs) & gm) * 255 / gm),  \
+              (int)(((*(CARD8 *)(p) >> bs) & bm) * 255 / bm) ))
 
 #define COLOR_FROM_PIXEL16_ADDRESS(p) (  \
-  PALETTERGB( (int) ((( *(CARD16 *)(p) >> rs) & rm) * 255 / rm),  \
-              (int) ((( *(CARD16 *)(p) >> gs) & gm) * 255 / gm),  \
-              (int) ((( *(CARD16 *)(p) >> bs) & bm) * 255 / bm) ))
+  PALETTERGB( (int)(((*(CARD16 *)(p) >> rs) & rm) * 255 / rm),  \
+              (int)(((*(CARD16 *)(p) >> gs) & gm) * 255 / gm),  \
+              (int)(((*(CARD16 *)(p) >> bs) & bm) * 255 / bm) ))
 
 #define COLOR_FROM_PIXEL24_ADDRESS(p) (  \
-  PALETTERGB( (int) (((CARD8 *)(p))[0]),  \
-              (int) (((CARD8 *)(p))[1]),  \
-              (int) (((CARD8 *)(p))[2]) ))
+  PALETTERGB( (int)(((CARD8 *)(p))[0]),  \
+              (int)(((CARD8 *)(p))[1]),  \
+              (int)(((CARD8 *)(p))[2]) ))
 
 #define COLOR_FROM_PIXEL32_ADDRESS(p) (  \
-  PALETTERGB( (int) ((( *(CARD32 *)(p) >> rs) & rm) * 255 / rm),  \
-              (int) ((( *(CARD32 *)(p) >> gs) & gm) * 255 / gm),  \
-              (int) ((( *(CARD32 *)(p) >> bs) & bm) * 255 / bm) ))
+  PALETTERGB( (int)(((*(CARD32 *)(p) >> rs) & rm) * 255 / rm),  \
+              (int)(((*(CARD32 *)(p) >> gs) & gm) * 255 / gm),  \
+              (int)(((*(CARD32 *)(p) >> bs) & bm) * 255 / bm) ))
 
 // The following may be faster if you already have a pixel value of the
 // appropriate size
 #define COLOR_FROM_PIXEL8(p) (  \
-  PALETTERGB( (int) (((p >> rs) & rm) * 255 / rm),  \
-              (int) (((p >> gs) & gm) * 255 / gm),  \
-              (int) (((p >> bs) & bm) * 255 / bm) ))
+  PALETTERGB( (int)(((p >> rs) & rm) * 255 / rm),  \
+              (int)(((p >> gs) & gm) * 255 / gm),  \
+              (int)(((p >> bs) & bm) * 255 / bm) ))
 
 #define COLOR_FROM_PIXEL16(p) (  \
-  PALETTERGB( (int) (((p >> rs) & rm) * 255 / rm),  \
-              (int) (((p >> gs) & gm) * 255 / gm),  \
-              (int) (((p >> bs) & bm) * 255 / bm) ))
+  PALETTERGB( (int)(((p >> rs) & rm) * 255 / rm),  \
+              (int)(((p >> gs) & gm) * 255 / gm),  \
+              (int)(((p >> bs) & bm) * 255 / bm) ))
 
 #define COLOR_FROM_PIXEL32(p) (  \
-  PALETTERGB( (int) (((p >> rs) & rm) * 255 / rm),  \
-              (int) (((p >> gs) & gm) * 255 / gm),  \
-              (int) (((p >> bs) & bm) * 255 / bm) ))
+  PALETTERGB( (int)(((p >> rs) & rm) * 255 / rm),  \
+              (int)(((p >> gs) & gm) * 255 / gm),  \
+              (int)(((p >> bs) & bm) * 255 / bm) ))
 
 
 #define SETPIXEL(b, x, y, c) SetPixelV((b), (x), (y), (c))
@@ -558,4 +561,4 @@ class TempDC
 #define SETPIXELS_NOCONV(buffer, x, y, w, h)  \
   (this->*setPixels)((char *)buffer, x, y, w, h);
 
-#endif // CLIENTCONNECTION_H__
+#endif  // CLIENTCONNECTION_H__

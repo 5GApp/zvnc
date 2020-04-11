@@ -1,6 +1,22 @@
 #VAR: css=turbovnc.css
-#TITLE: User's Guide for TurboVNC 2.1.2
+#TITLE: User's Guide for TurboVNC {val: _DOCVERSION}
 #MAKETITLE
+
+#IF: fmt==html
+
+#DefMacroN id=file args=@body <<---
+<strong class="filename">{arg: @body}</strong>
+---
+
+#DefMacroN id=pcode args=@body <<---
+<code>{arg: @body}</code>
+---
+
+#DefRegionN id=Pverb args=@body <<---
+<pre class="verbatim">{arg: @body}</pre>
+---
+
+#ENDIF
 
 #LIST: contents
 {nl}
@@ -17,16 +33,16 @@
 #INCLUDE: sysreq.txt
 {nl}
 ----8<--------------
-#INCLUDE: turbovncinstall.txt
+#INCLUDE: install.txt
 {nl}
 ----8<--------------
-#INCLUDE: turbovncusage.txt
+#INCLUDE: usage.txt
 {nl}
 ----8<--------------
 #INCLUDE: performance.txt
 {nl}
 ----8<--------------
-#INCLUDE: turbovncauth.txt
+#INCLUDE: auth.txt
 {nl}
 ----8<--------------
 #INCLUDE: vglusage.txt

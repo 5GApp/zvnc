@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2002 RealVNC Ltd.  All Rights Reserved.
  * Copyright (C) 2003 Sun Microsystems, Inc.
- * Copyright (C) 2012, 2014 D. R. Commander.  All Rights Reserved.
+ * Copyright (C) 2012, 2014, 2017 D. R. Commander.  All Rights Reserved.
  *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -29,14 +29,14 @@
 #include "zrleoutstream.h"
 
 
-#define GET_IMAGE_INTO_BUF(tx,ty,tw,th,buf)                                \
-{  char *fbptr = (cl->fb                                                   \
-                 + (rfbScreen.paddedWidthInBytes * ty)                     \
-                 + (tx * (rfbScreen.bitsPerPixel / 8)));                   \
-                                                                           \
-  (*cl->translateFn)(cl->translateLookupTable, &rfbServerFormat,           \
-                     &cl->format, fbptr, (char*)buf,                       \
-                     rfbScreen.paddedWidthInBytes, tw, th); }
+#define GET_IMAGE_INTO_BUF(tx, ty, tw, th, buf) {                  \
+  char *fbptr = (cl->fb + (rfbFB.paddedWidthInBytes * ty) +        \
+                 (tx * (rfbFB.bitsPerPixel / 8)));                 \
+                                                                   \
+  (*cl->translateFn) (cl->translateLookupTable, &rfbServerFormat,  \
+                      &cl->format, fbptr, (char *)buf,             \
+                      rfbFB.paddedWidthInBytes, tw, th);           \
+}
 
 #define EXTRA_ARGS , rfbClientPtr cl
 
@@ -103,15 +103,15 @@
 
 Bool rfbSendRectEncodingZRLE(rfbClientPtr cl, int x, int y, int w, int h)
 {
-  zrleOutStream* zos;
+  zrleOutStream *zos;
   rfbFramebufferUpdateRectHeader rect;
   rfbZRLEHeader hdr;
   int i;
   char *zrleBeforeBuf;
 
   if (cl->zrleBeforeBuf == NULL) {
-    cl->zrleBeforeBuf = (char *) malloc(rfbZRLETileWidth * rfbZRLETileHeight *
-                                        4 + 4);
+    cl->zrleBeforeBuf = (char *)rfbAlloc(rfbZRLETileWidth *
+                                         rfbZRLETileHeight * 4 + 4);
   }
   zrleBeforeBuf = cl->zrleBeforeBuf;
 
@@ -155,10 +155,10 @@ Bool rfbSendRectEncodingZRLE(rfbClientPtr cl, int x, int y, int w, int h)
       break;
 
     case 32: {
-      Bool fitsInLS3Bytes
-        = ((cl->format.redMax   << cl->format.redShift)   < (1<<24) &&
-           (cl->format.greenMax << cl->format.greenShift) < (1<<24) &&
-           (cl->format.blueMax  << cl->format.blueShift)  < (1<<24));
+      Bool fitsInLS3Bytes =
+        ((cl->format.redMax   << cl->format.redShift)   < (1 << 24) &&
+         (cl->format.greenMax << cl->format.greenShift) < (1 << 24) &&
+         (cl->format.blueMax  << cl->format.blueShift)  < (1 << 24));
 
       Bool fitsInMS3Bytes = (cl->format.redShift   > 7  &&
                              cl->format.greenShift > 7  &&
@@ -170,15 +170,15 @@ Bool rfbSendRectEncodingZRLE(rfbClientPtr cl, int x, int y, int w, int h)
           zrleEncode24ABE(x, y, w, h, zos, zrleBeforeBuf, cl);
         else
           zrleEncode24ALE(x, y, w, h, zos, zrleBeforeBuf, cl);
-      }
-      else if ((fitsInLS3Bytes && cl->format.bigEndian) ||
-               (fitsInMS3Bytes && !cl->format.bigEndian)) {
+
+      } else if ((fitsInLS3Bytes && cl->format.bigEndian) ||
+                 (fitsInMS3Bytes && !cl->format.bigEndian)) {
         if (cl->format.bigEndian)
           zrleEncode24BBE(x, y, w, h, zos, zrleBeforeBuf, cl);
         else
           zrleEncode24BLE(x, y, w, h, zos, zrleBeforeBuf, cl);
-      }
-      else {
+
+      } else {
         if (cl->format.bigEndian)
           zrleEncode32BE(x, y, w, h, zos, zrleBeforeBuf, cl);
         else
@@ -188,12 +188,12 @@ Bool rfbSendRectEncodingZRLE(rfbClientPtr cl, int x, int y, int w, int h)
     }
   }
 
-  cl->rfbBytesSent[rfbEncodingZRLE] += sz_rfbFramebufferUpdateRectHeader
-      + sz_rfbZRLEHeader + ZRLE_BUFFER_LENGTH(&zos->out);
+  cl->rfbBytesSent[rfbEncodingZRLE] += sz_rfbFramebufferUpdateRectHeader +
+      sz_rfbZRLEHeader + ZRLE_BUFFER_LENGTH(&zos->out);
   cl->rfbRectanglesSent[rfbEncodingZRLE]++;
 
-  if (ublen + sz_rfbFramebufferUpdateRectHeader + sz_rfbZRLEHeader
-      > UPDATE_BUF_SIZE) {
+  if (ublen + sz_rfbFramebufferUpdateRectHeader + sz_rfbZRLEHeader >
+      UPDATE_BUF_SIZE) {
     if (!rfbSendUpdateBuf(cl))
       return FALSE;
   }
@@ -223,7 +223,7 @@ Bool rfbSendRectEncodingZRLE(rfbClientPtr cl, int x, int y, int w, int h)
       bytesToCopy = ZRLE_BUFFER_LENGTH(&zos->out) - i;
     }
 
-    memcpy(updateBuf + ublen, (CARD8*)zos->out.start + i, bytesToCopy);
+    memcpy(updateBuf + ublen, (CARD8 *)zos->out.start + i, bytesToCopy);
 
     ublen += bytesToCopy;
     i += bytesToCopy;
@@ -245,14 +245,9 @@ void rfbFreeZrleData(rfbClientPtr cl)
   }
   cl->zrleData = NULL;
 
-  if (cl->zrleBeforeBuf) {
-    free(cl->zrleBeforeBuf);
-  }
+  free(cl->zrleBeforeBuf);
   cl->zrleBeforeBuf = NULL;
 
-  if (cl->paletteHelper) {
-    free(cl->paletteHelper);
-  }
+  free(cl->paletteHelper);
   cl->paletteHelper = NULL;
 }
-

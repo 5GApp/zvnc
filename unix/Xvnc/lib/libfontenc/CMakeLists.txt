@@ -1,5 +1,7 @@
 include_directories(include)
 
+disable_compiler_warnings()
+
 if(APPLE)
 	set(DEFAULT_FONT_ENCODINGS_DIRECTORY "/opt/X11/share/fonts/encodings")
 else()
@@ -11,5 +13,5 @@ message(STATUS "FONT_ENCODINGS_DIRECTORY = ${FONT_ENCODINGS_DIRECTORY}")
 add_definitions(-DFONT_ENCODINGS_DIRECTORY=\"${FONT_ENCODINGS_DIRECTORY}\")
 
 add_library(fontenc STATIC
-	encparse.c
-	fontenc.c)
+	src/encparse.c
+	src/fontenc.c)

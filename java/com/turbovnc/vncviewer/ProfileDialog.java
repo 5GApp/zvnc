@@ -1,4 +1,4 @@
-/* Copyright (C) 2013-2014 D. R. Commander.  All Rights Reserved.
+/* Copyright (C) 2013-2014, 2018 D. R. Commander.  All Rights Reserved.
  *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -24,7 +24,7 @@ import javax.swing.*;
 
 class ProfileDialog extends Dialog {
 
-  public ProfileDialog(CConn cc_) {
+  ProfileDialog(CConn cc_) {
     super(false);
     cc = cc_;
 
@@ -278,11 +278,13 @@ class ProfileDialog extends Dialog {
     dlg.getRootPane().registerKeyboardAction(actionListener, ks,
       JComponent.WHEN_IN_FOCUSED_WINDOW);
     ks = KeyStroke.getKeyStroke(KeyEvent.VK_P,
-      KeyEvent.CTRL_MASK | KeyEvent.ALT_MASK | KeyEvent.SHIFT_MASK);
+      KeyEvent.CTRL_DOWN_MASK | KeyEvent.ALT_DOWN_MASK |
+      KeyEvent.SHIFT_DOWN_MASK);
     dlg.getRootPane().registerKeyboardAction(actionListener, ks,
       JComponent.WHEN_IN_FOCUSED_WINDOW);
-    if (VncViewer.os.startsWith("mac os x")) {
-      int appleKey = Toolkit.getDefaultToolkit().getMenuShortcutKeyMask();
+    if (VncViewer.OS.startsWith("mac os x") &&
+        (VncViewer.JAVA_VERSION < 9 || VncViewer.JAVA_VERSION > 11)) {
+      int appleKey = VncViewer.getMenuShortcutKeyMask();
       ks = KeyStroke.getKeyStroke(KeyEvent.VK_P, appleKey);
       dlg.getRootPane().registerKeyboardAction(actionListener, ks,
         JComponent.WHEN_IN_FOCUSED_WINDOW);
@@ -296,9 +298,9 @@ class ProfileDialog extends Dialog {
 
   CConn cc;
   JPanel panel;
-  public JLabel upsVal, tpVal;
-  public JLabel tpuRecvVal, tpuDecodeVal, tpuBlitVal, tpuTotalVal;
-  public JLabel mpDecodeVal, mpBlitVal, mpsDecodeVal, mpsBlitVal, mpsTotalVal;
-  public JLabel rectDecodeVal, rectBlitVal, pprDecodeVal, pprBlitVal;
-  public JLabel rpuDecodeVal;
+  JLabel upsVal, tpVal;
+  JLabel tpuRecvVal, tpuDecodeVal, tpuBlitVal, tpuTotalVal;
+  JLabel mpDecodeVal, mpBlitVal, mpsDecodeVal, mpsBlitVal, mpsTotalVal;
+  JLabel rectDecodeVal, rectBlitVal, pprDecodeVal, pprBlitVal;
+  JLabel rpuDecodeVal;
 }

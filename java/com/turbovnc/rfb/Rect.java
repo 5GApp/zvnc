@@ -1,5 +1,6 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
  * Copyright (C) 2011 Brian P. Hinz
+ * Copyright (C) 2017-2018 D. R. Commander.  All Rights Reserved.
  *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -70,6 +71,13 @@ public class Rect {
     return tl.x < r.br.x && tl.y < r.br.y && br.x > r.tl.x && br.y > r.tl.y;
   }
 
+  public final Rect intersection(Rect r) {
+    if (!overlaps(r))
+      return new Rect(0, 0, 0, 0);
+    return new Rect(Math.max(tl.x, r.tl.x), Math.max(tl.y, r.tl.y),
+                    Math.min(br.x, r.br.x), Math.min(br.y, r.br.y));
+  }
+
   public final int area() {
     int area = (br.x - tl.x) * (br.y - tl.y);
     if (area > 0)
@@ -87,7 +95,8 @@ public class Rect {
     return (tl.x <= p.x) && (tl.y <= p.y) && (br.x > p.x) && (br.y > p.y);
   }
 
+  // CHECKSTYLE VisibilityModifier:OFF
   public Point tl;
   public Point br;
-
+  // CHECKSTYLE VisibilityModifier:ON
 }

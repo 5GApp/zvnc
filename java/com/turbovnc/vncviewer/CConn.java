@@ -1,6 +1,6 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
  * Copyright 2009-2011 Pierre Ossman <ossman@cendio.se> for Cendio AB
- * Copyright (C) 2011-2016 D. R. Commander.  All Rights Reserved.
+ * Copyright (C) 2011-2020 D. R. Commander.  All Rights Reserved.
  * Copyright (C) 2011-2015 Brian P. Hinz
  *
  * This is free software; you can redistribute it and/or modify
@@ -37,10 +37,9 @@ import java.awt.*;
 import java.awt.event.*;
 
 import java.io.*;
-import java.lang.Exception;
-import java.util.jar.Attributes;
-import java.util.jar.Manifest;
+import java.lang.reflect.*;
 import javax.swing.*;
+import java.text.*;
 import java.util.*;
 
 import com.turbovnc.rdr.*;
@@ -63,7 +62,7 @@ public class CConn extends CConnection implements UserPasswdGetter,
     new PixelFormat(16, 15, false, true, 31, 31, 31, 10, 5, 0);
   static final PixelFormat HIGH_COLOR_PF =
     new PixelFormat(16, 16, false, true, 31, 63, 31, 11, 5, 0);
-  static final int SUPER_MASK = 1<<16;
+  static final int SUPER_MASK = 1 << 16;
 
   static final double getTime() {
     return (double)System.nanoTime() / 1.0e9;
@@ -78,9 +77,9 @@ public class CConn extends CConnection implements UserPasswdGetter,
 
     opts = new Options(VncViewer.opts);
 
-    formatChange = false; encodingChange = false;
+    formatChange = false;  encodingChange = false;
     currentEncoding = opts.preferredEncoding;
-    showToolbar = VncViewer.showToolbar.getValue() && !benchmark;
+    showToolbar = opts.showToolbar && !benchmark;
     options = new OptionsDialog(this);
     options.initDialog();
     clipboardDialog = new ClipboardDialog(this);
@@ -88,8 +87,8 @@ public class CConn extends CConnection implements UserPasswdGetter,
     String env = System.getenv("TVNC_PROFILE");
     if (env != null && env.equals("1"))
       alwaysProfile = true;
-    firstUpdate = true; pendingUpdate = false; continuousUpdates = false;
-    forceNonincremental = true; supportsSyncFence = false;
+    firstUpdate = true;  pendingUpdate = false;  continuousUpdates = false;
+    forceNonincremental = true;  supportsSyncFence = false;
     pressedKeys = new HashMap<Integer, Integer>();
 
     setShared(opts.shared);
@@ -102,17 +101,17 @@ public class CConn extends CConnection implements UserPasswdGetter,
     menu = new F8Menu(this);
 
     if (VncViewer.noUnixLogin.getValue()) {
-      Security.disableSecType(Security.secTypePlain);
-      Security.disableSecType(Security.secTypeTLSPlain);
-      Security.disableSecType(Security.secTypeX509Plain);
-      Security.disableSecType(Security.secTypeUnixLogin);
+      Security.disableSecType(RFB.SECTYPE_PLAIN);
+      Security.disableSecType(RFB.SECTYPE_TLS_PLAIN);
+      Security.disableSecType(RFB.SECTYPE_X509_PLAIN);
+      Security.disableSecType(RFB.SECTYPE_UNIX_LOGIN);
     } else if (isUnixLoginForced()) {
-      Security.disableSecType(Security.secTypeVncAuth);
-      Security.disableSecType(Security.secTypeTLSVnc);
-      Security.disableSecType(Security.secTypeX509Vnc);
-      Security.disableSecType(Security.secTypeNone);
-      Security.disableSecType(Security.secTypeTLSNone);
-      Security.disableSecType(Security.secTypeX509None);
+      Security.disableSecType(RFB.SECTYPE_VNCAUTH);
+      Security.disableSecType(RFB.SECTYPE_TLS_VNC);
+      Security.disableSecType(RFB.SECTYPE_X509_VNC);
+      Security.disableSecType(RFB.SECTYPE_NONE);
+      Security.disableSecType(RFB.SECTYPE_TLS_NONE);
+      Security.disableSecType(RFB.SECTYPE_X509_NONE);
     }
 
     if (sock != null) {
@@ -158,8 +157,8 @@ public class CConn extends CConnection implements UserPasswdGetter,
     }
 
     if (benchmark) {
-      state_ = RFBSTATE_INITIALISATION;
-      reader_ = new CMsgReaderV3(this, viewer.benchFile);
+      state = RFBSTATE_INITIALISATION;
+      reader = new CMsgReaderV3(this, viewer.benchFile);
     } else {
       sock.inStream().setBlockCallback(this);
       setServerName(opts.serverName);
@@ -170,19 +169,21 @@ public class CConn extends CConnection implements UserPasswdGetter,
 
   // RFB thread
   public void reset() {
-    if (reader_ != null)
-      reader_.reset();
-    state_ = RFBSTATE_INITIALISATION;
+    if (reader != null)
+      reader.reset();
+    state = RFBSTATE_INITIALISATION;
   }
 
   // EDT: deleteWindow() is called when the user closes the window or selects
   // "Close Connection" from the F8 menu.
-  void deleteWindow() {
+  void deleteWindow(boolean disposeViewport) {
     if (viewport != null) {
       if (viewport.timer != null)
         viewport.timer.stop();
-      viewport.dispose();
+      if (disposeViewport)
+        viewport.dispose();
     }
+    releasePressedKeys();
     viewport = null;
   }
 
@@ -194,7 +195,7 @@ public class CConn extends CConnection implements UserPasswdGetter,
         wait(0, 50000);
       }
     } catch (InterruptedException e) {
-      throw new SystemException(e.toString());
+      throw new SystemException(e);
     }
   }
 
@@ -203,7 +204,7 @@ public class CConn extends CConnection implements UserPasswdGetter,
   public final boolean getUserPasswd(StringBuffer user, StringBuffer passwd) {
     String title = ((user == null ? "Standard VNC Authentication" :
                                     "Unix Login Authentication") +
-                    " [" + csecurity.description() + "]");
+                    " [" + csecurity.getDescription() + "]");
     String passwordFileStr = VncViewer.passwordFile.getValue();
     PasswdDialog dlg = null;
     String autoPass;
@@ -228,7 +229,7 @@ public class CConn extends CConnection implements UserPasswdGetter,
       try {
         autoPass = in.readLine();
       } catch (IOException e) {
-        throw new SystemException(e.toString());
+        throw new SystemException(e);
       }
       VncViewer.autoPass.setParam("0");
     } else
@@ -339,74 +340,14 @@ public class CConn extends CConnection implements UserPasswdGetter,
     try {
       SwingUtilities.invokeAndWait(new Runnable() {
         public void run() {
-          if (VncViewer.embed.getValue()) {
-            desktop.setScaledSize();
-            setupEmbeddedFrame();
-          } else {
-            recreateViewport();
-          }
+          recreateViewport();
         }
       });
     } catch (InterruptedException e) {
-    } catch (java.lang.reflect.InvocationTargetException e) {
-      Throwable cause = e.getCause();
-      if (cause instanceof ErrorException)
-        throw (ErrorException)cause;
-      if (cause instanceof WarningException)
-        throw (WarningException)cause;
-      else if (cause != null)
-        throw new SystemException(cause.toString());
+    } catch (InvocationTargetException e) {
+      SystemException.checkException(e);
+      throw new SystemException(e);
     }
-  }
-
-  // EDT
-  void setupEmbeddedFrame() {
-    UIManager.getDefaults().put("ScrollPane.ancestorInputMap",
-      new UIDefaults.LazyInputMap(new Object[]{}));
-    JScrollPane sp = new JScrollPane();
-    sp.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 0));
-    sp.getViewport().setBackground(Color.BLACK);
-    InputMap im = sp.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW);
-    int ctrlAltShiftMask = Event.SHIFT_MASK | Event.CTRL_MASK | Event.ALT_MASK;
-    if (im != null) {
-      im.put(KeyStroke.getKeyStroke(KeyEvent.VK_UP, ctrlAltShiftMask),
-             "unitScrollUp");
-      im.put(KeyStroke.getKeyStroke(KeyEvent.VK_DOWN, ctrlAltShiftMask),
-             "unitScrollDown");
-      im.put(KeyStroke.getKeyStroke(KeyEvent.VK_LEFT, ctrlAltShiftMask),
-             "unitScrollLeft");
-      im.put(KeyStroke.getKeyStroke(KeyEvent.VK_RIGHT, ctrlAltShiftMask),
-             "unitScrollRight");
-      im.put(KeyStroke.getKeyStroke(KeyEvent.VK_PAGE_UP, ctrlAltShiftMask),
-             "scrollUp");
-      im.put(KeyStroke.getKeyStroke(KeyEvent.VK_PAGE_DOWN, ctrlAltShiftMask),
-             "scrollDown");
-      im.put(KeyStroke.getKeyStroke(KeyEvent.VK_HOME, ctrlAltShiftMask),
-             "scrollLeft");
-      im.put(KeyStroke.getKeyStroke(KeyEvent.VK_END, ctrlAltShiftMask),
-             "scrollRight");
-    }
-    sp.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_AS_NEEDED);
-    sp.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED);
-    sp.getViewport().setView(desktop);
-    viewer.getContentPane().removeAll();
-    if (showToolbar) {
-      Toolbar tb = new Toolbar(this);
-      viewer.add(tb, BorderLayout.PAGE_START);
-    }
-    viewer.add(sp);
-    viewer.addFocusListener(new FocusAdapter() {
-      public void focusGained(FocusEvent e) {
-        if (desktop.isAncestorOf(viewer))
-          desktop.requestFocus();
-      }
-      public void focusLost(FocusEvent e) {
-        releasePressedKeys();
-      }
-    });
-    viewer.validate();
-    viewer.repaint();
-    desktop.requestFocus();
   }
 
   // RFB thread: setDesktopSize() is called when the desktop size changes
@@ -426,8 +367,7 @@ public class CConn extends CConnection implements UserPasswdGetter,
                                      ScreenSet layout) {
     super.setExtendedDesktopSize(reason, result, w, h, layout);
 
-    if ((reason == screenTypes.reasonClient) &&
-        (result != screenTypes.resultSuccess)) {
+    if (reason == RFB.EDS_REASON_CLIENT && result != RFB.EDS_RESULT_SUCCESS) {
       vlog.error("SetDesktopSize failed: " + result);
       return;
     }
@@ -437,6 +377,23 @@ public class CConn extends CConnection implements UserPasswdGetter,
       opts.desktopSize.width = w;
       opts.desktopSize.height = h;
     }
+
+    // Normally, the TurboVNC Viewer will not create a multi-screen viewer
+    // window that extends beyond the unshared boundary of any physical screen
+    // on the client.  This ensures that the window position and scrollbars
+    // will be correct, regardless of the monitor layout.  However, if
+    // automatic desktop resizing is enabled and the server supports Xinerama,
+    // then the full-screen multi-screen viewer window should extend to the
+    // bounding box of all physical screens, even if it extends beyond the
+    // unshared boundary of some of them.  This ensures correct behavior if the
+    // screens have different resolutions or are offset.  TurboVNC 2.0.x-2.1.x
+    // supported the RFB extended desktop size message but not Xinerama, and
+    // those versions also sent a screen ID of 0.  Thus, we do not assume that
+    // the server supports Xinerama unless it sends a multi-screen layout or a
+    // non-zero screen ID.
+    if (layout.numScreens() > 1 ||
+        (layout.numScreens() > 0 && layout.screens.get(0).id != 0))
+      serverXinerama = true;
   }
 
   // RFB thread: clientRedirect() migrates the client to another host/port.
@@ -482,8 +439,8 @@ public class CConn extends CConnection implements UserPasswdGetter,
       // We need fences to make extra update requests and continuous updates
       // "safe".  See fence() for the next step.
       if (cp.supportsFence)
-        writer().writeFence(
-          fenceTypes.fenceFlagRequest | fenceTypes.fenceFlagSyncNext, 0, null);
+        writer().writeFence(RFB.FENCE_FLAG_REQUEST | RFB.FENCE_FLAG_SYNC_NEXT,
+                            0, null);
 
       if (!cp.supportsSetDesktopSize) {
         if (opts.desktopSize.mode == Options.SIZE_AUTO)
@@ -494,17 +451,11 @@ public class CConn extends CConnection implements UserPasswdGetter,
       }
 
       if (opts.desktopSize.mode == Options.SIZE_MANUAL)
-        sendDesktopSize(opts.desktopSize.width, opts.desktopSize.height);
+        sendDesktopSize(opts.desktopSize.width, opts.desktopSize.height,
+                        false);
       else if (opts.desktopSize.mode == Options.SIZE_AUTO) {
-        if (VncViewer.embed.getValue()) {
-          Dimension size = viewer.getSize();
-          if (showToolbar)
-            size.height -= 22;
-          sendDesktopSize(size.width, size.height);
-        } else {
-          Dimension availableSize = viewport.getAvailableSize();
-          sendDesktopSize(availableSize.width, availableSize.height);
-        }
+        Dimension availableSize = viewport.getAvailableSize();
+        sendDesktopSize(availableSize.width, availableSize.height, false);
       }
 
       firstUpdate = false;
@@ -551,7 +502,8 @@ public class CConn extends CConnection implements UserPasswdGetter,
         profileDialog.mpsDecodeVal.setText(str);
         str = String.format("%.3f", (double)blitPixels / 1000000. / tBlit);
         profileDialog.mpsBlitVal.setText(str);
-        str = String.format("%.3f", (double)decodePixels / 1000000. / tElapsed);
+        str = String.format("%.3f", (double)decodePixels / 1000000. /
+                            tElapsed);
         profileDialog.mpsTotalVal.setText(str);
 
         str = String.format("%d", decodeRect);
@@ -572,7 +524,8 @@ public class CConn extends CConnection implements UserPasswdGetter,
         System.out.format("Total:   %.3f updates/sec,  %.3f Mpixels/sec,  %.3f Mbits/sec\n",
                           (double)updates / tElapsed,
                           (double)decodePixels / 1000000. / tElapsed,
-                          (double)sock.inStream().getBytesRead() / 125000. / tElapsed);
+                          (double)sock.inStream().getBytesRead() / 125000. /
+                            tElapsed);
         System.out.format("Decode:  %.3f Mpixels,  %.3f Mpixels/sec,  %d rect,\n",
                           (double)decodePixels / 1000000.,
                           (double)decodePixels / 1000000. / tDecode,
@@ -587,7 +540,8 @@ public class CConn extends CConnection implements UserPasswdGetter,
         System.out.format("         %.0f pixels/update\n",
                           (double)blitPixels / (double)blits);
         System.out.format("Time/update:  Recv = %.3f ms,  Decode = %.3f ms,  Blit = %.3f ms\n",
-                          sock.inStream().getReadTime() / (double)updates * 1000.,
+                          sock.inStream().getReadTime() / (double)updates *
+                            1000.,
                           tDecode / (double)updates * 1000.,
                           tBlit / (double)updates * 1000.);
         System.out.format("              Total = %.3f ms  +  Overhead = %.3f ms\n",
@@ -602,43 +556,123 @@ public class CConn extends CConnection implements UserPasswdGetter,
     }
   }
 
-  public void sendDesktopSize(int width, int height) {
-    sendDesktopSize(width, height, false);
-  }
-
-  // RFB thread when sending initial desktop size, EDT when sending automatic
-  // desktop size (writer() is synchronized.)
-  public void sendDesktopSize(int width, int height, boolean automatic) {
+  public final ScreenSet computeScreenLayout(int width, int height) {
+    java.awt.Point vpPos = viewport.getContentPane().getLocationOnScreen();
+    Rectangle vpRect = viewport.getContentPane().getBounds();
     ScreenSet layout;
 
-    layout = cp.screenLayout;
+    String env = System.getenv("TVNC_SINGLESCREEN");
+    if (VncViewer.getBooleanProperty("turbovnc.singlescreen", false) ||
+        (env != null && env.equals("1"))) {
+      layout = cp.screenLayout;
+
+      if (layout.numScreens() == 0)
+        layout.addScreen(new Screen());
+      else if (layout.numScreens() != 1) {
+        int i = 0;
+
+        for (Iterator<Screen> iter = layout.screens.iterator(); iter.hasNext();
+             i++) {
+          Screen screen = (Screen)iter.next();
+          if (i > 0)
+            iter.remove();
+        }
+      }
+
+      Screen screen0 = (Screen)layout.screens.iterator().next();
+      screen0.dimensions.tl.x = 0;
+      screen0.dimensions.tl.y = 0;
+      screen0.dimensions.br.x = width;
+      screen0.dimensions.br.y = height;
+
+      return layout;
+    }
+
+    layout = new ScreenSet();
+
+    vpRect.x = vpPos.x;
+    vpRect.y = vpPos.y;
+    if (showToolbar && !opts.fullScreen) {
+      vpRect.y += 22;
+      vpRect.height -= 22;
+    }
+
+    GraphicsEnvironment ge = GraphicsEnvironment.getLocalGraphicsEnvironment();
+    GraphicsDevice[] gsList = ge.getScreenDevices();
+    for (GraphicsDevice gs : gsList) {
+      GraphicsConfiguration[] gcList = gs.getConfigurations();
+      for (GraphicsConfiguration gc : gcList) {
+        Rectangle s = gc.getBounds();
+        if (gc == gcList[0]) {
+          Rectangle screenRect = s.intersection(vpRect);
+
+          if (screenRect.isEmpty() || screenRect.width < 1 ||
+              screenRect.height < 1)
+            continue;
+
+          screenRect.x -= vpRect.x;
+          screenRect.y -= vpRect.y;
+
+          Screen screen = new Screen(0, screenRect.x, screenRect.y,
+                                     screenRect.width, screenRect.height, 0);
+
+          // We map client screens to server screens in the server's preferred
+          // order (which, in the case of the TurboVNC Server, is always the
+          // order of RANDR outputs), so we send the "primary" screen (the
+          // screen containing 0, 0) first.  This ensures that the window
+          // manager taskbar on the server will follow the taskbar on the
+          // client.
+          if (s.contains(0, 0))
+            layout.addScreen0(screen);
+          else
+            layout.addScreen(screen);
+        }
+      }
+    }
+
+    layout.assignIDs(cp.screenLayout);
+
+    return layout;
+  }
+
+  // RFB thread when sending initial desktop size, EDT when sending desktop
+  // size from component listener (writer() is synchronized.)
+  public void sendDesktopSize(int width, int height, boolean fromListener) {
+    ScreenSet layout;
 
     if (!cp.supportsSetDesktopSize)
       return;
 
-    if (layout.numScreens() == 0)
-      layout.addScreen(new Screen());
-    else if (layout.numScreens() != 1) {
-
-      while (true) {
-        Iterator<Screen> iter = layout.screens.iterator();
-        Screen screen = (Screen)iter.next();
-
-        if (!iter.hasNext())
-          break;
-
-        layout.removeScreen(screen.id);
+    if (opts.desktopSize.mode == Options.SIZE_AUTO)
+      layout = computeScreenLayout(width, height);
+    else {
+      if (opts.desktopSize.mode != Options.SIZE_MANUAL ||
+          opts.desktopSize.layout == null) {
+        vlog.error("ERROR: Unexpected desktop size configuration");
+        return;
       }
+      layout = opts.desktopSize.layout;
+      // Map client screens to server screen IDs in the server's preferred
+      // order.  This allows us to control the server's screen order from the
+      // client.
+      layout.assignIDs(cp.screenLayout);
     }
 
-    Screen screen0 = (Screen)layout.screens.iterator().next();
-    screen0.dimensions.tl.x = 0;
-    screen0.dimensions.tl.y = 0;
-    screen0.dimensions.br.x = width;
-    screen0.dimensions.br.y = height;
+    sendDesktopSize(width, height, layout, fromListener);
+  }
+
+  public void sendDesktopSize(int width, int height, ScreenSet layout,
+                              boolean fromListener) {
+    if (!cp.supportsSetDesktopSize)
+      return;
+
+    if (!layout.validate(width, height, true)) {
+      vlog.error("Invalid screen layout");
+      return;
+    }
 
     writer().writeSetDesktopSize(width, height, layout);
-    if (automatic)
+    if (fromListener)
       pendingAutoResize.setXYWH(0, 0, width, height);
   }
 
@@ -655,7 +689,7 @@ public class CConn extends CConnection implements UserPasswdGetter,
   }
 
   public void serverCutText(String str, int len) {
-    if (opts.acceptClipboard)
+    if (opts.recvClipboard)
       clipboardDialog.serverCutText(str, len);
   }
 
@@ -679,7 +713,7 @@ public class CConn extends CConnection implements UserPasswdGetter,
   public void beginRect(Rect r, int encoding) {
     if (!benchmark)
       sock.inStream().startTiming();
-    if (encoding != Encodings.encodingCopyRect) {
+    if (encoding != RFB.ENCODING_COPYRECT) {
       boolean updateTitle = false;
       if (encoding != lastServerEncoding)
         updateTitle = true;
@@ -716,7 +750,7 @@ public class CConn extends CConnection implements UserPasswdGetter,
     desktop.releaseRawPixels(r);
   }
 
-  // EDT
+  // RFB thread
   public void setCursor(int width, int height, Point hotspot,
                         int[] data, byte[] mask) {
     if (viewport != null && (viewport.dx > 0 || viewport.dy > 0))
@@ -729,10 +763,10 @@ public class CConn extends CConnection implements UserPasswdGetter,
     // can't call super.super.fence(flags, len, data);
     cp.supportsFence = true;
 
-    if ((flags & fenceTypes.fenceFlagRequest) != 0) {
+    if ((flags & RFB.FENCE_FLAG_REQUEST) != 0) {
       // We handle everything synchronously, so we trivially honor these modes.
-      flags = flags & (fenceTypes.fenceFlagBlockBefore |
-                       fenceTypes.fenceFlagBlockAfter);
+      flags = flags & (RFB.FENCE_FLAG_BLOCK_BEFORE |
+                       RFB.FENCE_FLAG_BLOCK_AFTER);
 
       writer().writeFence(flags, len, data);
       return;
@@ -740,7 +774,7 @@ public class CConn extends CConnection implements UserPasswdGetter,
 
     if (len == 0) {
       // Initial probe
-      if ((flags & fenceTypes.fenceFlagSyncNext) != 0) {
+      if ((flags & RFB.FENCE_FLAG_SYNC_NEXT) != 0) {
         supportsSyncFence = true;
 
         if (cp.supportsContinuousUpdates) {
@@ -870,13 +904,8 @@ public class CConn extends CConnection implements UserPasswdGetter,
     pendingAutoResize.setXYWH(0, 0, 0, 0);
 
     int w, h;
-    if (VncViewer.embed.getValue()) {
-      w = desktop.scaledWidth;
-      h = desktop.scaledHeight;
-    } else {
-      w = desktop.width();
-      h = desktop.height();
-    }
+    w = desktop.width();
+    h = desktop.height();
 
     if ((w == cp.width) && (h == cp.height) &&
         (desktop.im.width() == cp.width) &&
@@ -905,11 +934,7 @@ public class CConn extends CConnection implements UserPasswdGetter,
           if (opts.desktopSize.mode == Options.SIZE_AUTO && opts.fullScreen)
             pendingServerResize = true;
           desktop.resize();
-          if (VncViewer.embed.getValue()) {
-            desktop.setScaledSize();
-            setupEmbeddedFrame();
-          } else if (opts.desktopSize.mode == Options.SIZE_AUTO &&
-                     !opts.fullScreen)
+          if (opts.desktopSize.mode == Options.SIZE_AUTO && !opts.fullScreen)
             // Have to do this in order to trigger the resize handler, even if
             // we're not actually changing the component size.
             recreateViewport(false);
@@ -920,14 +945,9 @@ public class CConn extends CConnection implements UserPasswdGetter,
         }
       });
     } catch (InterruptedException e) {
-    } catch (java.lang.reflect.InvocationTargetException e) {
-      Throwable cause = e.getCause();
-      if (cause instanceof ErrorException)
-        throw (ErrorException)cause;
-      if (cause instanceof WarningException)
-        throw (WarningException)cause;
-      else if (cause != null)
-        throw new SystemException(cause.toString());
+    } catch (InvocationTargetException e) {
+      SystemException.checkException(e);
+      throw new SystemException(e);
     }
   }
 
@@ -939,9 +959,6 @@ public class CConn extends CConnection implements UserPasswdGetter,
   private void recreateViewport() { recreateViewport(false); }
 
   private void recreateViewport(boolean restore) {
-    boolean keyboardTempUngrabbed = false;
-    if (VncViewer.embed.getValue())
-      return;
     if (viewport != null) {
       if (opts.fullScreen) {
         savedState = viewport.getExtendedState();
@@ -950,33 +967,28 @@ public class CConn extends CConnection implements UserPasswdGetter,
       }
       if (viewport.timer != null)
         viewport.timer.stop();
-      if (VncViewer.osGrab() && keyboardGrabbed) {
-        viewport.grabKeyboardHelper(false);
-        if (opts.grabKeyboard == Options.GRAB_MANUAL)
-          keyboardTempUngrabbed = true;
-      }
+      viewport.grabKeyboardHelper(false);
+      if (VncViewer.currentMonitorIsPrimary.getValue())
+        oldViewportBounds = viewport.getBounds();
       viewport.dispose();
     }
     viewport = new Viewport(this);
     // When in Lion full-screen mode, we need to create the viewport as if
     // full-screen mode was disabled.
-    boolean fullScreen = opts.fullScreen && !viewport.lionFSSupported();
-    viewport.setUndecorated(fullScreen);
+    boolean fullScreenWindow = opts.fullScreen && !viewport.lionFSSupported();
+    viewport.setUndecorated(fullScreenWindow);
     desktop.setViewport(viewport);
     reconfigureViewport(restore);
     if ((cp.width > 0) && (cp.height > 0))
       viewport.setVisible(true);
     if (VncViewer.isX11())
-      viewport.x11FullScreenHelper(fullScreen);
+      viewport.x11FullScreenHelper(opts.fullScreen);
     if (opts.fullScreen && viewport.lionFSSupported())
       viewport.toggleLionFS();
     desktop.requestFocusInWindow();
-    if (VncViewer.osGrab()) {
-      if (opts.grabKeyboard == Options.GRAB_ALWAYS ||
-          (opts.grabKeyboard == Options.GRAB_MANUAL && keyboardTempUngrabbed) ||
-          (opts.grabKeyboard == Options.GRAB_FS && fullScreen))
-        viewport.grabKeyboardHelper(true);
-    }
+    if (shouldGrab())
+      viewport.grabKeyboardHelper(true);
+    selectGrab(VncViewer.isKeyboardGrabbed(viewport));
     if (VncViewer.osEID())
       viewport.setupExtInputHelper();
   }
@@ -1013,12 +1025,13 @@ public class CConn extends CConnection implements UserPasswdGetter,
             (Math.abs(s.x - s0.x) % s0.width) != 0)
             equal = false;
 
-        // If the screen areas of the primary monitor and this monitor overlap
-        // vertically, then allow the full-screen window to extend horizontally
+        // If the screen area of this monitor overlaps vertically with the
+        // multi-screen span area, then allow the window to extend horizontally
         // to this monitor, and constrain it vertically, if necessary, to fit
         // within this monitor's dimensions.
-        if (Math.min(s.y + s.height, s0.y + s0.height) -
-            Math.max(s.y, s0.y) > 0) {
+        if (Math.min(s.y + s.height, span.y + span.height) -
+            Math.max(s.y, span.y) > 0 &&
+            (s.x + s.width == span.x || span.x + span.width == s.x)) {
           int right = Math.max(s.x + s.width, span.x + span.width);
           int bottom = Math.min(s.y + s.height, span.y + span.height);
           span.x = Math.min(s.x, span.x);
@@ -1038,15 +1051,17 @@ public class CConn extends CConnection implements UserPasswdGetter,
 
   // EDT
   public Rectangle getSpannedSize() {
-    boolean fullScreen = opts.fullScreen &&
-                         (!VncViewer.os.startsWith("mac os x") ||
-                          viewport.lionFSSupported());
+    boolean fullScreenWindow = opts.fullScreen &&
+                               (!VncViewer.OS.startsWith("mac os x") ||
+                                viewport.lionFSSupported());
     GraphicsEnvironment ge = GraphicsEnvironment.getLocalGraphicsEnvironment();
     GraphicsDevice[] gsList = ge.getScreenDevices();
     Rectangle primary = null, s0 = null;
     Rectangle span = new Rectangle(-1, -1, 0, 0);
     Insets in = new Insets(0, 0, 0, 0);
-    int tLeft = 0, tTop = 0, tRight = 0, tBottom = 0;
+    int tLeft = Integer.MAX_VALUE, tTop = Integer.MAX_VALUE,
+      tRight = Integer.MIN_VALUE, tBottom = Integer.MIN_VALUE;
+    int primaryID = 0;
     boolean equal = true;
     int sw = desktop.scaledWidth;
     int sh = desktop.scaledHeight;
@@ -1065,7 +1080,7 @@ public class CConn extends CConnection implements UserPasswdGetter,
       GraphicsConfiguration[] gcList = gs.getConfigurations();
       for (GraphicsConfiguration gc : gcList) {
         Rectangle s = gc.getBounds();
-        if (!fullScreen) {
+        if (!fullScreenWindow) {
           if (gc == gcList[0])
             in = tk.getScreenInsets(gc);
           s.setBounds(s.x + in.left, s.y + in.top,
@@ -1083,10 +1098,14 @@ public class CConn extends CConnection implements UserPasswdGetter,
              (gc == gcList[0] && ((s.y < primary.y &&
                                    s.x < primary.x + primary.width) ||
                                   (s.x < primary.x &&
-                                   s.y < primary.y + primary.height)))))
+                                   s.y < primary.y + primary.height))))) {
           primary = s;
+          primaryGD = gs;
+          primaryID = i;
+        }
         if (VncViewer.currentMonitorIsPrimary.getValue() && viewport != null) {
-          Rectangle vpRect = viewport.getBounds();
+          Rectangle vpRect = oldViewportBounds != null ? oldViewportBounds :
+                             viewport.getBounds();
           if (opts.fullScreen && savedRect.width > 0 && savedRect.height > 0)
             vpRect = savedRect;
           vpRect = s.intersection(vpRect);
@@ -1094,18 +1113,33 @@ public class CConn extends CConnection implements UserPasswdGetter,
           if (area > maxArea) {
             maxArea = area;
             primary = s;
+            primaryGD = gs;
+            primaryID = i;
             primaryIsCurrent = true;
           }
         }
+
+        if (s.x < tLeft) {
+          tLeft = s.x;
+          viewport.leftMon = i;
+        }
+        if (s.x + s.width > tRight) {
+          tRight = s.x + s.width;
+          viewport.rightMon = i;
+        }
+        if (s.y < tTop) {
+          tTop = s.y;
+          viewport.topMon = i;
+        }
+        if (s.y + s.height > tBottom) {
+          tBottom = s.y + s.height;
+          viewport.bottomMon = i;
+        }
+
         if (gc == gcList[0])
-          vlog.debug("Screen " + i++ + (fullScreen ? " FS " : " work ") +
+          vlog.debug("Screen " + i++ + (fullScreenWindow ? " FS " : " work ") +
                      "area: " + s.x + ", " + s.y + " " + s.width + " x " +
                      s.height);
-
-        tLeft = Math.min(tLeft, s.x);
-        tRight = Math.max(tRight, s.x + s.width);
-        tTop = Math.min(tTop, s.y);
-        tBottom = Math.max(tBottom, s.y + s.height);
 
         // If any monitors aren't equal in resolution to and evenly offset from
         // the primary, then we can't use the simple path.
@@ -1115,12 +1149,13 @@ public class CConn extends CConnection implements UserPasswdGetter,
             (Math.abs(s.x - s0.x) % s0.width) != 0)
             equal = false;
 
-        // If the screen areas of the primary monitor and this monitor overlap
-        // vertically, then allow the full-screen window to extend horizontally
+        // If the screen/work area of this monitor overlaps vertically with the
+        // multi-screen span area, then allow the window to extend horizontally
         // to this monitor, and constrain it vertically, if necessary, to fit
         // within this monitor's dimensions.
-        if (Math.min(s.y + s.height, s0.y + s0.height) -
-            Math.max(s.y, s0.y) > 0) {
+        if (Math.min(s.y + s.height, span.y + span.height) -
+            Math.max(s.y, span.y) > 0 &&
+            (s.x + s.width == span.x || span.x + span.width == s.x)) {
           int right = Math.max(s.x + s.width, span.x + span.width);
           int bottom = Math.min(s.y + s.height, span.y + span.height);
           span.x = Math.min(s.x, span.x);
@@ -1131,21 +1166,39 @@ public class CConn extends CConnection implements UserPasswdGetter,
       }
     }
 
+    // Enable Primary spanning if explicitly selected, or ...
     if (opts.span == Options.SPAN_PRIMARY ||
+        // Automatic spanning + Manual or Server resizing is enabled and the
+        // server desktop fits on the primary monitor, or ...
         (opts.span == Options.SPAN_AUTO &&
+         opts.desktopSize.mode != Options.SIZE_AUTO &&
          (sw <= primary.width || span.width <= primary.width) &&
          (sh <= primary.height || span.height <= primary.height)) ||
+        // Automatic spanning + Auto resizing is enabled and we're in windowed
+        // mode, or ...
         (opts.span == Options.SPAN_AUTO &&
-         opts.desktopSize.mode == Options.SIZE_AUTO) ||
-        VncViewer.isX11())
-        // ^^ Multi-screen spanning doesn't even pretend to work under X11.
+         opts.desktopSize.mode == Options.SIZE_AUTO && !opts.fullScreen) ||
+        // We're using X11, and we're in windowed mode or the helper library
+        // isn't available (multi-screen spanning doesn't even pretend to work
+        // under X11 except for full-screen windows, and even then, the
+        // appropriate WM hints must be set using C.)
+        (VncViewer.isX11() && (!opts.fullScreen ||
+                               !Viewport.isHelperAvailable()))) {
       span = primary;
-    else if (equal && fullScreen)
+      viewport.leftMon = viewport.rightMon = viewport.topMon =
+        viewport.bottomMon = primaryID;
+    } else if (equal ||
+               (fullScreenWindow && serverXinerama &&
+                opts.desktopSize.mode == Options.SIZE_AUTO &&
+                !VncViewer.isX11()))
       span = new Rectangle(tLeft, tTop, tRight - tLeft, tBottom - tTop);
 
-    vlog.debug("Spanned " + (fullScreen ? "FS " : "work ") + "area: " +
+    vlog.debug("Spanned " + (fullScreenWindow ? "FS " : "work ") + "area: " +
                span.x + ", " + span.y + " " + span.width + " x " +
                span.height);
+
+    oldViewportBounds = null;
+
     return span;
   }
 
@@ -1153,15 +1206,15 @@ public class CConn extends CConnection implements UserPasswdGetter,
   public void sizeWindow() { sizeWindow(true); }
 
   public void sizeWindow(boolean manual) {
-    if (VncViewer.embed.getValue())
-      return;
-    boolean fullScreen = opts.fullScreen && !viewport.lionFSSupported();
+    boolean fullScreenWindow = opts.fullScreen && !viewport.lionFSSupported();
     int w = desktop.scaledWidth;
     int h = desktop.scaledHeight;
     Rectangle span = getSpannedSize();
+    Dimension vpSize;
 
     if ((opts.scalingFactor == Options.SCALE_AUTO ||
-         opts.scalingFactor == Options.SCALE_FIXEDRATIO) && !fullScreen) {
+         opts.scalingFactor == Options.SCALE_FIXEDRATIO) &&
+        !fullScreenWindow) {
       w = cp.width;
       h = cp.height;
     }
@@ -1177,14 +1230,37 @@ public class CConn extends CConnection implements UserPasswdGetter,
       h = span.height;
 
     if (viewport.getExtendedState() != JFrame.ICONIFIED &&
-        !VncViewer.os.startsWith("mac os x"))
+        !VncViewer.OS.startsWith("mac os x"))
       viewport.setExtendedState(JFrame.NORMAL);
     int x = (span.width - w) / 2 + span.x;
     int y = (span.height - h) / 2 + span.y;
-    if (fullScreen) {
+    if (fullScreenWindow) {
+      java.awt.Point vpPos = viewport.getLocation();
+      boolean checkLayoutNow = false;
+      vpSize = viewport.getSize();
+
+      // If the window size is unchanged, check whether we need to force a
+      // desktop resize message to inform the server of a new screen layout
+      if (opts.desktopSize.mode == Options.SIZE_AUTO && manual &&
+          span.width == vpSize.width && span.height == vpSize.height) {
+        if (vpPos.x != span.x || vpPos.y != span.y)
+          checkLayout = true;
+        else
+          // The component listener is unlikely to be called, so we need to
+          // check the layout immediately.
+          checkLayoutNow = true;
+      }
+
       viewport.setGeometry(span.x, span.y, span.width, span.height);
       viewport.dx = x - span.x;
       viewport.dy = y - span.y;
+
+      if (checkLayoutNow) {
+        ScreenSet layout = computeScreenLayout(span.width, span.height);
+        if (!layout.equals(cp.screenLayout))
+          sendDesktopSize(span.width, span.height, layout, false);
+      }
+
       return;
     }
 
@@ -1221,14 +1297,21 @@ public class CConn extends CConnection implements UserPasswdGetter,
       }
     }
 
+    vpSize = viewport.getSize();
+    // If the window size is unchanged, check whether we need to force a
+    // desktop resize message to inform the server of a new screen layout
+    if (opts.desktopSize.mode == Options.SIZE_AUTO && manual &&
+        w == vpSize.width && h == vpSize.height)
+      checkLayout = true;
+
     viewport.setGeometry(x, y, w, h);
   }
 
   // EDT
   private void reconfigureViewport(boolean restore) {
-    boolean fullScreen = opts.fullScreen && !viewport.lionFSSupported();
+    boolean fullScreenWindow = opts.fullScreen && !viewport.lionFSSupported();
     desktop.setScaledSize();
-    if (!fullScreen && savedRect.width > 0 && savedRect.height > 0 &&
+    if (!fullScreenWindow && savedRect.width > 0 && savedRect.height > 0 &&
         restore) {
       if (savedState >= 0)
         viewport.setExtendedState(savedState);
@@ -1272,9 +1355,8 @@ public class CConn extends CConnection implements UserPasswdGetter,
 
         pf.write(memStream);
 
-        writer().writeFence(fenceTypes.fenceFlagRequest |
-                            fenceTypes.fenceFlagSyncNext, memStream.length(),
-                            (byte[])memStream.data());
+        writer().writeFence(RFB.FENCE_FLAG_REQUEST | RFB.FENCE_FLAG_SYNC_NEXT,
+                            memStream.length(), (byte[])memStream.data());
       } else {
         // New update requests are sent out before processing the last update,
         // so we cannot switch our internal format right now (doing so would
@@ -1294,8 +1376,9 @@ public class CConn extends CConnection implements UserPasswdGetter,
 
     if (forceNonincremental || !continuousUpdates) {
       pendingUpdate = true;
-      writer().writeFramebufferUpdateRequest(new Rect(0, 0, cp.width, cp.height),
-                                             !formatChange && !forceNonincremental);
+      writer().writeFramebufferUpdateRequest(
+        new Rect(0, 0, cp.width, cp.height),
+        !formatChange && !forceNonincremental);
     }
 
     forceNonincremental = false;
@@ -1306,20 +1389,34 @@ public class CConn extends CConnection implements UserPasswdGetter,
   // The following methods are all called from the EDT.
 
   // close() shuts down the socket, thus waking up the RFB thread.
-  public void close() {
-    deleteWindow();
+  public void close() { close(true); }
+
+  public void close(boolean disposeViewport) {
+    deleteWindow(disposeViewport);
     shuttingDown = true;
     if (sock != null)
       sock.shutdown();
+    if (opts.sshSession != null) {
+      opts.sshSession.disconnect();
+      opts.sshSession = null;
+    }
+    if (reader != null)
+      reader.close();
+  }
+
+  public void closeSocket() {
+    if (sock != null) {
+      sock.close();
+      sock = null;
+    }
   }
 
   // Menu callbacks.  These are guaranteed only to be called after serverInit()
   // has been called, since the menu is only accessible from the DesktopWindow.
 
   void showMenu(int x, int y) {
-    String os = System.getProperty("os.name");
-    if (os.startsWith("Windows"))
-      com.sun.java.swing.plaf.windows.WindowsLookAndFeel.setMnemonicHidden(false);
+    if (VncViewer.OS.startsWith("windows"))
+      UIManager.put("Button.showMnemonics", true);
     if (viewport != null && (viewport.dx > 0 || viewport.dy > 0)) {
       x += viewport.dx;
       y += viewport.dy;
@@ -1331,6 +1428,14 @@ public class CConn extends CConnection implements UserPasswdGetter,
     VncViewer.showAbout(viewport);
   }
 
+  String getEncryptionProtocol() {
+    String protocol = csecurity.getProtocol();
+    if (protocol.equals("None") && opts.sshTunnelActive)
+      return "SSH";
+    else
+      return protocol + (opts.sshTunnelActive ? " (+ SSH)" : "");
+  }
+
   void showInfo() {
     JOptionPane pane = new JOptionPane(
       "Desktop name:  " + cp.name() + "\n" +
@@ -1338,21 +1443,18 @@ public class CConn extends CConnection implements UserPasswdGetter,
       "Size:  " + cp.width + "x" + cp.height + "\n" +
       "Pixel format:  " + desktop.getPF().print() + "\n" +
       "(server default " + serverPF.print() + ")\n" +
-      "Requested encoding:  " + Encodings.encodingName(currentEncoding) +
-        "\n" +
-      "Last used encoding:  " + Encodings.encodingName(lastServerEncoding) +
-        "\n" +
+      "Requested encoding:  " + RFB.encodingName(currentEncoding) + "\n" +
+      "Last used encoding:  " + RFB.encodingName(lastServerEncoding) + "\n" +
       "Protocol version:  " + cp.majorVersion + "." + cp.minorVersion + "\n" +
-      "Security type:  " + Security.secTypeName(csecurity.getType()) +
-        " [" + csecurity.description() + "]\n" +
+      "Security type:  " + RFB.secTypeName(csecurity.getType()) +
+        " [" + csecurity.getDescription() + "]\n" +
+      "Encryption protocol:  " + getEncryptionProtocol() + "\n" +
       "JPEG decompression:  " +
-        (reader_.isTurboJPEG() ? "Turbo" : "Unaccelerated") +
-      (VncViewer.osGrab() ? "\nTurboVNC Helper:  " +
+        (reader.isTurboJPEG() ? "Turbo" : "Unaccelerated") +
+      (VncViewer.osGrab() || VncViewer.osEID() ? "\nTurboVNC Helper:  " +
         (Viewport.isHelperAvailable() ? "Loaded" : "Not found") : ""),
       JOptionPane.PLAIN_MESSAGE);
     JDialog dlg = pane.createDialog(viewport, "VNC connection info");
-    if (VncViewer.embed.getValue())
-      dlg.setAlwaysOnTop(true);
     dlg.setVisible(true);
   }
 
@@ -1369,12 +1471,12 @@ public class CConn extends CConnection implements UserPasswdGetter,
     boolean allowJpegSave = opts.allowJpeg;
     boolean alreadyLossless = false;
 
-    if (currentEncoding == Encodings.encodingTight &&
-        opts.compressLevel == 1 && opts.quality == -1 && !opts.allowJpeg)
+    if (currentEncoding == RFB.ENCODING_TIGHT && opts.compressLevel == 1 &&
+        opts.quality == -1 && !opts.allowJpeg)
       alreadyLossless = true;
 
     if (!alreadyLossless) {
-      currentEncoding = Encodings.encodingTight;
+      currentEncoding = RFB.ENCODING_TIGHT;
       opts.compressLevel = 1;
       opts.quality = -1;
       opts.allowJpeg = false;
@@ -1402,8 +1504,7 @@ public class CConn extends CConnection implements UserPasswdGetter,
 
   public void setTightOptions() {
     int encoding = currentEncoding;
-    if (lastServerEncoding != Encodings.encodingTight &&
-        lastServerEncoding >= 0)
+    if (lastServerEncoding != RFB.ENCODING_TIGHT && lastServerEncoding >= 0)
       encoding = lastServerEncoding;
     options.setTightOptions(encoding);
   }
@@ -1417,9 +1518,11 @@ public class CConn extends CConnection implements UserPasswdGetter,
     setTightOptions();
 
     options.viewOnly.setSelected(opts.viewOnly);
-    options.acceptClipboard.setSelected(opts.acceptClipboard);
+    options.reverseScroll.setSelected(opts.reverseScroll);
+    options.fsAltEnter.setSelected(opts.fsAltEnter);
+    options.recvClipboard.setSelected(opts.recvClipboard);
     options.sendClipboard.setSelected(opts.sendClipboard);
-    options.menuKey.setSelectedItem(KeyEvent.getKeyText(MenuKey.getMenuKeyCode()));
+    options.menuKey.setSelectedItem(KeyEvent.getKeyText(opts.menuKeyCode));
     if (VncViewer.osGrab() && Viewport.isHelperAvailable())
       options.grabKeyboard.setSelectedIndex(opts.grabKeyboard);
 
@@ -1461,7 +1564,7 @@ public class CConn extends CConnection implements UserPasswdGetter,
     options.span.setSelectedIndex(opts.span);
     options.cursorShape.setSelected(opts.cursorShape);
     options.acceptBell.setSelected(opts.acceptBell);
-    options.showToolbar.setSelected(VncViewer.showToolbar.getValue());
+    options.showToolbar.setSelected(opts.showToolbar);
     options.desktopSize.setEnabled(cp.supportsSetDesktopSize || firstUpdate);
     if (opts.scalingFactor == Options.SCALE_AUTO) {
       options.scalingFactor.setSelectedItem("Auto");
@@ -1472,17 +1575,11 @@ public class CConn extends CConnection implements UserPasswdGetter,
       if (desktop != null)
         desktop.setScaledSize();
     }
-    if (opts.desktopSize.mode == Options.SIZE_AUTO) {
-      options.desktopSize.setSelectedItem("Auto");
+    options.desktopSize.setSelectedItem(opts.desktopSize.getString());
+    if (opts.desktopSize.mode == Options.SIZE_AUTO)
       options.scalingFactor.setEnabled(false);
-    } else if (opts.desktopSize.mode == Options.SIZE_SERVER) {
-      options.desktopSize.setSelectedItem("Server");
-      options.scalingFactor.setEnabled(!VncViewer.embed.getValue());
-    } else {
-      options.desktopSize.setSelectedItem(opts.desktopSize.width + "x" +
-                                          opts.desktopSize.height);
-      options.scalingFactor.setEnabled(!VncViewer.embed.getValue());
-    }
+    else
+      options.scalingFactor.setEnabled(true);
   }
 
   public void getOptions() {
@@ -1508,10 +1605,14 @@ public class CConn extends CConnection implements UserPasswdGetter,
     if (opts.viewOnly != options.viewOnly.isSelected() && showToolbar)
       recreate = true;
     opts.viewOnly = options.viewOnly.isSelected();
-    opts.acceptClipboard = options.acceptClipboard.isSelected();
+    opts.reverseScroll = options.reverseScroll.isSelected();
+    opts.fsAltEnter = options.fsAltEnter.isSelected();
+    opts.recvClipboard = options.recvClipboard.isSelected();
     opts.sendClipboard = options.sendClipboard.isSelected();
     opts.acceptBell = options.acceptBell.isSelected();
-    VncViewer.showToolbar.setParam(options.showToolbar.isSelected());
+    opts.showToolbar = options.showToolbar.isSelected();
+    if (state() != RFBSTATE_NORMAL)
+      showToolbar = opts.showToolbar && !benchmark;
 
     int oldScalingFactor = opts.scalingFactor;
     opts.setScalingFactor(options.scalingFactor.getSelectedItem().toString());
@@ -1520,7 +1621,7 @@ public class CConn extends CConnection implements UserPasswdGetter,
 
     Options.DesktopSize oldDesktopSize = opts.desktopSize;
     opts.setDesktopSize(options.desktopSize.getSelectedItem().toString());
-    if (desktop != null && !opts.desktopSize.isEqual(oldDesktopSize)) {
+    if (desktop != null && !opts.desktopSize.equals(oldDesktopSize)) {
       if (oldDesktopSize.mode != Options.SIZE_AUTO &&
           opts.desktopSize.mode == Options.SIZE_AUTO &&
           viewport.lionFSSupported() && opts.fullScreen &&
@@ -1544,18 +1645,21 @@ public class CConn extends CConnection implements UserPasswdGetter,
     }
 
     clipboardDialog.setSendingEnabled(opts.sendClipboard);
-    VncViewer.menuKey.setParam(
-      MenuKey.getMenuKeySymbols()[options.menuKey.getSelectedIndex()].name);
-    menu.updateMenuKey(MenuKey.getMenuKeyCode());
+    opts.menuKeyCode =
+      MenuKey.getMenuKeySymbols()[options.menuKey.getSelectedIndex()].keycode;
+    opts.menuKeySym =
+      MenuKey.getMenuKeySymbols()[options.menuKey.getSelectedIndex()].keysym;
+    menu.updateMenuKey(opts.menuKeyCode);
 
     if (VncViewer.osGrab() && Viewport.isHelperAvailable()) {
       opts.grabKeyboard = options.grabKeyboard.getSelectedIndex();
+      boolean isGrabbed = VncViewer.isKeyboardGrabbed(viewport);
       if (viewport != null &&
-          ((opts.grabKeyboard == Options.GRAB_ALWAYS &&
-           !viewport.keyboardTempUngrabbed) ||
-          (opts.grabKeyboard == Options.GRAB_FS &&
-           opts.fullScreen != viewport.keyboardTempUngrabbed))) {
-        viewport.keyboardTempUngrabbed = !viewport.keyboardTempUngrabbed;
+          ((opts.grabKeyboard == Options.GRAB_ALWAYS && !isGrabbed) ||
+           (opts.grabKeyboard == Options.GRAB_FS &&
+            opts.fullScreen != isGrabbed))) {
+        viewport.grabKeyboardHelper(!isGrabbed);
+        selectGrab(!isGrabbed);
       }
     }
 
@@ -1583,8 +1687,6 @@ public class CConn extends CConnection implements UserPasswdGetter,
 
     if (options.fullScreen.isSelected() != opts.fullScreen)
       toggleFullScreen();
-    else if ((recreate || reconfigure) && VncViewer.embed.getValue())
-      setupEmbeddedFrame();
     else if (recreate)
       recreateViewport();
     else if (reconfigure) {
@@ -1601,6 +1703,8 @@ public class CConn extends CConnection implements UserPasswdGetter,
       forceNonincremental = true;
       requestNewUpdate();
     }
+
+    VncViewer.opts = new Options(opts);
   }
 
   public boolean supportsSetDesktopSize() {
@@ -1612,25 +1716,15 @@ public class CConn extends CConnection implements UserPasswdGetter,
     if (opts.fullScreen)
       return;
     showToolbar = !showToolbar;
-    if (viewport != null && !VncViewer.embed.getValue()) {
+    if (viewport != null) {
       recreateViewport();
       viewport.showToolbar(showToolbar);
-    } else {
-      setupEmbeddedFrame();
-      if (opts.desktopSize.mode == Options.SIZE_AUTO) {
-        Dimension size = viewer.getSize();
-        if (showToolbar)
-          size.height -= 22;
-        sendDesktopSize(size.width, size.height);
-      }
     }
     menu.showToolbar.setSelected(showToolbar);
   }
 
   // EDT
   public void toggleFullScreen() {
-    if (VncViewer.embed.getValue())
-      return;
     opts.fullScreen = !opts.fullScreen;
     menu.fullScreen.setSelected(opts.fullScreen);
     if (viewport != null) {
@@ -1642,12 +1736,22 @@ public class CConn extends CConnection implements UserPasswdGetter,
     }
   }
 
-  // EDT
-  public void toggleKeyboardGrab() {
-    if (VncViewer.embed.getValue() || !VncViewer.osGrab())
-      return;
-    if (viewport != null)
-      viewport.grabKeyboardHelper(!keyboardGrabbed);
+  public boolean shouldGrab() {
+    return VncViewer.osGrab() &&
+           (opts.grabKeyboard == Options.GRAB_ALWAYS ||
+            (opts.grabKeyboard == Options.GRAB_MANUAL && isGrabSelected()) ||
+            (opts.grabKeyboard == Options.GRAB_FS && opts.fullScreen));
+  }
+
+  public void selectGrab(boolean on) {
+    if (menu.grabKeyboard != null)
+      menu.grabKeyboard.setSelected(on);
+  }
+
+  public boolean isGrabSelected() {
+    if (menu.grabKeyboard != null)
+      return menu.grabKeyboard.isSelected();
+    return false;
   }
 
   // EDT
@@ -1681,25 +1785,25 @@ public class CConn extends CConnection implements UserPasswdGetter,
   // KeyEvent.getKeyModifiersText() is unfortunately broken on some platforms.
   String getKeyModifiersText() {
     String str = "";
-    if (pressedKeys.containsValue(Keysyms.Shift_L))
+    if (pressedKeys.containsValue(Keysyms.SHIFT_L))
       str += " LShift";
-    if (pressedKeys.containsValue(Keysyms.Shift_R))
+    if (pressedKeys.containsValue(Keysyms.SHIFT_R))
       str += " RShift";
-    if (pressedKeys.containsValue(Keysyms.Control_L))
+    if (pressedKeys.containsValue(Keysyms.CONTROL_L))
       str += " LCtrl";
-    if (pressedKeys.containsValue(Keysyms.Control_R))
+    if (pressedKeys.containsValue(Keysyms.CONTROL_R))
       str += " RCtrl";
-    if (pressedKeys.containsValue(Keysyms.Alt_L))
+    if (pressedKeys.containsValue(Keysyms.ALT_L))
       str += " LAlt";
-    if (pressedKeys.containsValue(Keysyms.Alt_R))
+    if (pressedKeys.containsValue(Keysyms.ALT_R))
       str += " RAlt";
-    if (pressedKeys.containsValue(Keysyms.Meta_L))
+    if (pressedKeys.containsValue(Keysyms.META_L))
       str += " LMeta";
-    if (pressedKeys.containsValue(Keysyms.Meta_R))
+    if (pressedKeys.containsValue(Keysyms.META_R))
       str += " RMeta";
-    if (pressedKeys.containsValue(Keysyms.Super_L))
+    if (pressedKeys.containsValue(Keysyms.SUPER_L))
       str += " LSuper";
-    if (pressedKeys.containsValue(Keysyms.Super_R))
+    if (pressedKeys.containsValue(Keysyms.SUPER_R))
       str += " RSuper";
     return str;
   }
@@ -1732,7 +1836,8 @@ public class CConn extends CConnection implements UserPasswdGetter,
 
     debugStr = ((ev.isActionKey() ? "action " : "") + "key " +
                   (down ? "PRESS" : "release") +
-                ", code " + KeyEvent.getKeyText(keycode) + " (" + keycode + ")" +
+                ", code " + KeyEvent.getKeyText(keycode) +
+                  " (" + keycode + ")" +
                 ", loc " + getLocationText(location) +
                 ", char " +
                   (key >= 32 && key <= 126 ? "'" + (char)key + "'" : key) +
@@ -1748,7 +1853,13 @@ public class CConn extends CConnection implements UserPasswdGetter,
     }
 
     if (!down) {
-      Integer sym = pressedKeys.get(keycode);
+      Integer hashedKey = keycode;
+      if (VncViewer.OS.startsWith("mac os x")) {
+        if (hashedKey == KeyEvent.VK_ALT_GRAPH)
+          hashedKey = KeyEvent.VK_ALT;
+      } else
+        hashedKey |= (location << 16);
+      Integer sym = pressedKeys.get(hashedKey);
 
       if (sym == null) {
         // Note that dead keys will raise this sort of error falsely
@@ -1758,8 +1869,25 @@ public class CConn extends CConnection implements UserPasswdGetter,
         return;
       }
 
+      // Work around a Windows bug whereby the O/S does not send a WM_KEYUP
+      // message if both Shift keys are pressed and only one is released.  If
+      // we receive a key release event for one Shift key and the other is in
+      // the pressed keys hash, we release both of them.
+      if (VncViewer.OS.startsWith("windows")) {
+        if (sym == Keysyms.SHIFT_R &&
+            pressedKeys.containsValue(Keysyms.SHIFT_L)) {
+          writeKeyEvent(Keysyms.SHIFT_L, down);
+          pressedKeys.remove(Keysyms.SHIFT_L);
+        }
+        if (sym == Keysyms.SHIFT_L &&
+            pressedKeys.containsValue(Keysyms.SHIFT_R)) {
+          writeKeyEvent(Keysyms.SHIFT_R, down);
+          pressedKeys.remove(Keysyms.SHIFT_R);
+        }
+      }
+
       writeKeyEvent(sym, false);
-      pressedKeys.remove(keycode);
+      pressedKeys.remove(hashedKey);
       debugStr += String.format(" => 0x%04x", sym);
       vlog.debug(debugStr);
       return;
@@ -1771,332 +1899,400 @@ public class CConn extends CConnection implements UserPasswdGetter,
         keysym = Keysyms.KP_0 + keycode - KeyEvent.VK_0;
 
       switch (keycode) {
-      case KeyEvent.VK_BACK_SPACE: keysym = Keysyms.BackSpace;  break;
-      case KeyEvent.VK_TAB:        keysym = Keysyms.Tab;  break;
-      case KeyEvent.VK_ENTER:
-        if (location == KeyEvent.KEY_LOCATION_NUMPAD)
-          keysym = Keysyms.KP_Enter;
-        else
-          keysym = Keysyms.Return;  break;
-      case KeyEvent.VK_ESCAPE:     keysym = Keysyms.Escape;  break;
-      case KeyEvent.VK_NUMPAD0:    keysym = Keysyms.KP_0;  break;
-      case KeyEvent.VK_NUMPAD1:    keysym = Keysyms.KP_1;  break;
-      case KeyEvent.VK_NUMPAD2:    keysym = Keysyms.KP_2;  break;
-      case KeyEvent.VK_NUMPAD3:    keysym = Keysyms.KP_3;  break;
-      case KeyEvent.VK_NUMPAD4:    keysym = Keysyms.KP_4;  break;
-      case KeyEvent.VK_NUMPAD5:    keysym = Keysyms.KP_5;  break;
-      case KeyEvent.VK_NUMPAD6:    keysym = Keysyms.KP_6;  break;
-      case KeyEvent.VK_NUMPAD7:    keysym = Keysyms.KP_7;  break;
-      case KeyEvent.VK_NUMPAD8:    keysym = Keysyms.KP_8;  break;
-      case KeyEvent.VK_NUMPAD9:    keysym = Keysyms.KP_9;  break;
-      case KeyEvent.VK_DECIMAL:    keysym = Keysyms.KP_Decimal;  break;
-      case KeyEvent.VK_ADD:        keysym = Keysyms.KP_Add;  break;
-      case KeyEvent.VK_SUBTRACT:   keysym = Keysyms.KP_Subtract;  break;
-      case KeyEvent.VK_MULTIPLY:   keysym = Keysyms.KP_Multiply;  break;
-      case KeyEvent.VK_DIVIDE:     keysym = Keysyms.KP_Divide;  break;
-      case KeyEvent.VK_DELETE:
-        if (location == KeyEvent.KEY_LOCATION_NUMPAD)
-          keysym = Keysyms.KP_Delete;
-        else
-          keysym = Keysyms.Delete;  break;
-      case KeyEvent.VK_CLEAR:
-        if (location == KeyEvent.KEY_LOCATION_NUMPAD)
-          keysym = Keysyms.KP_Begin;
-        else
-          keysym = Keysyms.Clear;  break;
-      case KeyEvent.VK_CONTROL:
-        if (location == KeyEvent.KEY_LOCATION_RIGHT)
-          keysym = Keysyms.Control_R;
-        else
-          keysym = Keysyms.Control_L;  break;
-      case KeyEvent.VK_ALT:
-        if (location == KeyEvent.KEY_LOCATION_RIGHT) {
-          // Mac has no AltGr key, but the Option/Alt keys serve the same
-          // purpose.  Thus, we allow RAlt to be used as AltGr and LAlt to be
-          // used as a regular Alt key.
-          if (VncViewer.os.startsWith("mac os x"))
-            keysym = Keysyms.ISO_Level3_Shift;
+        case KeyEvent.VK_BACK_SPACE:  keysym = Keysyms.BACKSPACE;  break;
+        case KeyEvent.VK_TAB:         keysym = Keysyms.TAB;  break;
+        case KeyEvent.VK_ENTER:
+          if (location == KeyEvent.KEY_LOCATION_NUMPAD)
+            keysym = Keysyms.KP_ENTER;
           else
-            keysym = Keysyms.Alt_R;
-        } else {
-          keysym = Keysyms.Alt_L;
-        }
-        break;
-      case KeyEvent.VK_SHIFT:
-        if (location == KeyEvent.KEY_LOCATION_RIGHT)
-          keysym = Keysyms.Shift_R;
-        else
-          keysym = Keysyms.Shift_L;  break;
-      case KeyEvent.VK_META:
-        if (location == KeyEvent.KEY_LOCATION_RIGHT)
-          keysym = Keysyms.Super_R;
-        else
-          keysym = Keysyms.Super_L;  break;
-      case KeyEvent.VK_ALT_GRAPH:
-        keysym = Keysyms.ISO_Level3_Shift;
-        break;
-      default:
-        // On Windows, pressing AltGr has the same effect as pressing LCtrl +
-        // RAlt, so we have to send fake key release events for those modifiers
-        // (and any other Ctrl and Alt modifiers that are pressed), then send
-        // the key event for the modified key, then send fake key press events
-        // for the same modifiers.
-        if (pressedKeys.containsValue(Keysyms.Alt_R) &&
-            pressedKeys.containsValue(Keysyms.Control_L) &&
-            VncViewer.os.startsWith("windows")) {
-          winAltGr = true;
-        } else if (ev.isControlDown()) {
-          // For CTRL-<letter>, CTRL is sent separately, so just send <letter>.
-          if ((key >= 1 && key <= 26 && !ev.isShiftDown()) ||
-              // CTRL-{, CTRL-|, CTRL-} also map to ASCII 96-127
-              (key >= 27 && key <= 29 && ev.isShiftDown()))
-            key += 96;
-          // For CTRL-SHIFT-<letter>, send capital <letter> to emulate the
-          // behavior of Linux.  For CTRL-@, send @.  For CTRL-_, send _.
-          // For CTRL-^, send ^.
-          else if (key < 32)
-            key += 64;
-          // Windows and Mac sometimes return CHAR_UNDEFINED with CTRL-SHIFT
-          // combinations, so the best we can do is send the key code if it is
-          // a valid ASCII symbol.
-          else if (key == KeyEvent.CHAR_UNDEFINED && keycode >= 0 &&
-                   keycode <= 127)
-            key = keycode;
-        } else if (pressedKeys.containsValue(Keysyms.Alt_L) &&
-                   VncViewer.os.startsWith("mac os x") && key > 127) {
-          // Un*x and Windows servers expect that, if Alt + an ASCII key is
-          // pressed, the key event for the ASCII key will be the same as if
-          // Alt had not been pressed.  On OS X, however, the Alt/Option keys
-          // act like AltGr keys, so if Alt + an ASCII key is pressed, the key
-          // code is the ASCII key symbol, but the key char is the code for the
-          // alternate graphics symbol.
-          if (keycode >= 65 && keycode <= 90 &&
-              !pressedKeys.containsValue(Keysyms.Shift_L) &&
-              !pressedKeys.containsValue(Keysyms.Shift_R))
-            key = keycode + 32;
-          else if (keycode == KeyEvent.VK_QUOTE)
-            key = '\'';
-          else if (keycode >= 32 && keycode <= 126)
-            key = keycode;
-        }
-        switch (keycode) {
-        case KeyEvent.VK_DEAD_ABOVEDOT:
-          if (location != KeyEvent.KEY_LOCATION_UNKNOWN)
-            keysym = Keysyms.Dead_AboveDot;
+            keysym = Keysyms.RETURN;
           break;
-        case KeyEvent.VK_DEAD_ABOVERING:
-          if (location != KeyEvent.KEY_LOCATION_UNKNOWN)
-            keysym = Keysyms.Dead_AboveRing;
+        case KeyEvent.VK_ESCAPE:      keysym = Keysyms.ESCAPE;  break;
+        case KeyEvent.VK_NUMPAD0:     keysym = Keysyms.KP_0;  break;
+        case KeyEvent.VK_NUMPAD1:     keysym = Keysyms.KP_1;  break;
+        case KeyEvent.VK_NUMPAD2:     keysym = Keysyms.KP_2;  break;
+        case KeyEvent.VK_NUMPAD3:     keysym = Keysyms.KP_3;  break;
+        case KeyEvent.VK_NUMPAD4:     keysym = Keysyms.KP_4;  break;
+        case KeyEvent.VK_NUMPAD5:     keysym = Keysyms.KP_5;  break;
+        case KeyEvent.VK_NUMPAD6:     keysym = Keysyms.KP_6;  break;
+        case KeyEvent.VK_NUMPAD7:     keysym = Keysyms.KP_7;  break;
+        case KeyEvent.VK_NUMPAD8:     keysym = Keysyms.KP_8;  break;
+        case KeyEvent.VK_NUMPAD9:     keysym = Keysyms.KP_9;  break;
+        case KeyEvent.VK_DECIMAL:
+          // Use XK_KP_Separator instead of XK_KP_Decimal if the current locale
+          // uses a comma rather than period as a decimal symbol.
+          java.awt.im.InputContext ic = java.awt.im.InputContext.getInstance();
+          DecimalFormat df =
+            (DecimalFormat)DecimalFormat.getInstance(ic.getLocale());
+          DecimalFormatSymbols dfs = df.getDecimalFormatSymbols();
+          char sep = dfs.getDecimalSeparator();
+          if (sep == ',')
+            keysym = Keysyms.KP_SEPARATOR;
+          else
+            keysym = Keysyms.KP_DECIMAL;
           break;
-        case KeyEvent.VK_DEAD_ACUTE:
-          if (location != KeyEvent.KEY_LOCATION_UNKNOWN)
-            keysym = Keysyms.Dead_Acute;
+        case KeyEvent.VK_ADD:         keysym = Keysyms.KP_ADD;  break;
+        case KeyEvent.VK_SUBTRACT:    keysym = Keysyms.KP_SUBTRACT;  break;
+        case KeyEvent.VK_MULTIPLY:    keysym = Keysyms.KP_MULTIPLY;  break;
+        case KeyEvent.VK_DIVIDE:      keysym = Keysyms.KP_DIVIDE;  break;
+        case KeyEvent.VK_DELETE:
+          if (location == KeyEvent.KEY_LOCATION_NUMPAD)
+            keysym = Keysyms.KP_DELETE;
+          else
+            keysym = Keysyms.DELETE;
           break;
-        case KeyEvent.VK_DEAD_BREVE:
-          if (location != KeyEvent.KEY_LOCATION_UNKNOWN)
-            keysym = Keysyms.Dead_Breve;
+        case KeyEvent.VK_CLEAR:
+          if (location == KeyEvent.KEY_LOCATION_NUMPAD)
+            keysym = Keysyms.KP_BEGIN;
+          else
+            keysym = Keysyms.CLEAR;
           break;
-        case KeyEvent.VK_DEAD_CARON:
-          if (location != KeyEvent.KEY_LOCATION_UNKNOWN)
-            keysym = Keysyms.Dead_Caron;
+        case KeyEvent.VK_CONTROL:
+          if (location == KeyEvent.KEY_LOCATION_RIGHT)
+            keysym = Keysyms.CONTROL_R;
+          else
+            keysym = Keysyms.CONTROL_L;
           break;
-        case KeyEvent.VK_DEAD_CEDILLA:
-          if (location != KeyEvent.KEY_LOCATION_UNKNOWN)
-            keysym = Keysyms.Dead_Cedilla;
+        case KeyEvent.VK_ALT:
+          if (location == KeyEvent.KEY_LOCATION_RIGHT) {
+            // Mac has no AltGr key, but the Option/Alt keys serve the same
+            // purpose.  Thus, we allow RAlt to be used as AltGr and LAlt to be
+            // used as a regular Alt key.
+            if (VncViewer.OS.startsWith("mac os x"))
+              keysym = Keysyms.ISO_LEVEL3_SHIFT;
+            else
+              keysym = Keysyms.ALT_R;
+          } else {
+            keysym = Keysyms.ALT_L;
+          }
           break;
-        case KeyEvent.VK_DEAD_CIRCUMFLEX:
-          if (location != KeyEvent.KEY_LOCATION_UNKNOWN)
-            keysym = Keysyms.Dead_Circumflex;
+        case KeyEvent.VK_SHIFT:
+          if (location == KeyEvent.KEY_LOCATION_RIGHT)
+            keysym = Keysyms.SHIFT_R;
+          else
+            keysym = Keysyms.SHIFT_L;
           break;
-        case KeyEvent.VK_DEAD_DIAERESIS:
-          if (location != KeyEvent.KEY_LOCATION_UNKNOWN)
-            keysym = Keysyms.Dead_Diaeresis;
+        case KeyEvent.VK_META:
+          if (location == KeyEvent.KEY_LOCATION_RIGHT)
+            keysym = Keysyms.SUPER_R;
+          else
+            keysym = Keysyms.SUPER_L;
           break;
-        case KeyEvent.VK_DEAD_DOUBLEACUTE:
-          if (location != KeyEvent.KEY_LOCATION_UNKNOWN)
-            keysym = Keysyms.Dead_DoubleAcute;
-          break;
-        case KeyEvent.VK_DEAD_GRAVE:
-          if (location != KeyEvent.KEY_LOCATION_UNKNOWN)
-            keysym = Keysyms.Dead_Grave;
-          break;
-        case KeyEvent.VK_DEAD_IOTA:
-          if (location != KeyEvent.KEY_LOCATION_UNKNOWN)
-            keysym = Keysyms.Dead_Iota;
-          break;
-        case KeyEvent.VK_DEAD_MACRON:
-          if (location != KeyEvent.KEY_LOCATION_UNKNOWN)
-            keysym = Keysyms.Dead_Macron;
-          break;
-        case KeyEvent.VK_DEAD_OGONEK:
-          if (location != KeyEvent.KEY_LOCATION_UNKNOWN)
-            keysym = Keysyms.Dead_Ogonek;
-          break;
-        case KeyEvent.VK_DEAD_SEMIVOICED_SOUND:
-          if (location != KeyEvent.KEY_LOCATION_UNKNOWN)
-            keysym = Keysyms.Dead_Semivoiced_Sound;
-          break;
-        case KeyEvent.VK_DEAD_TILDE:
-          if (location != KeyEvent.KEY_LOCATION_UNKNOWN)
-            keysym = Keysyms.Dead_Tilde;
-          break;
-        case KeyEvent.VK_DEAD_VOICED_SOUND:
-          if (location != KeyEvent.KEY_LOCATION_UNKNOWN)
-            keysym = Keysyms.Dead_Voiced_Sound;
+        case KeyEvent.VK_ALT_GRAPH:
+          keysym = Keysyms.ISO_LEVEL3_SHIFT;
           break;
         default:
-          keysym = UnicodeToKeysym.ucs2keysym(key);
-        }
-        if (keysym == -1) {
-          debugStr += " NO KEYSYM";
-          vlog.debug(debugStr);
-          return;
-        }
+          // On Windows, pressing AltGr has the same effect as pressing LCtrl +
+          // RAlt, so we have to send fake key release events for those
+          // modifiers (and any other Ctrl and Alt modifiers that are pressed),
+          // then send the key event for the modified key, then send fake key
+          // press events for the same modifiers.
+          if (pressedKeys.containsValue(Keysyms.ALT_R) &&
+              pressedKeys.containsValue(Keysyms.CONTROL_L) &&
+              VncViewer.OS.startsWith("windows")) {
+            winAltGr = true;
+          } else if (ev.isControlDown()) {
+            // For CTRL-<letter>, CTRL is sent separately, so just send
+            // <letter>.
+            if ((key >= 1 && key <= 26 && !ev.isShiftDown()) ||
+                // CTRL-{, CTRL-|, CTRL-} also map to ASCII 96-127
+                (key >= 27 && key <= 29 && ev.isShiftDown()))
+              key += 96;
+            // For CTRL-SHIFT-<letter>, send capital <letter> to emulate the
+            // behavior of Linux.  For CTRL-@, send @.  For CTRL-_, send _.
+            // For CTRL-^, send ^.
+            else if (key < 32)
+              key += 64;
+            // Windows and Mac sometimes return CHAR_UNDEFINED with CTRL-SHIFT
+            // combinations.
+            else if (key == KeyEvent.CHAR_UNDEFINED) {
+              // CTRL-SHIFT-Minus should generate an underscore key character
+              // in almost all keyboard layouts.  Emacs, in particular, uses
+              // CTRL-SHIFT-Underscore for its undo function.
+              if (keycode == KeyEvent.VK_MINUS && ev.isShiftDown())
+                key = '_';
+              // The best we can do for other keys is to send the key code if
+              // it is a valid ASCII symbol.
+              else if (keycode >= 0 && keycode <= 127)
+                key = keycode;
+            }
+          } else if (pressedKeys.containsValue(Keysyms.ALT_L) &&
+                     VncViewer.OS.startsWith("mac os x") && key > 127) {
+            // Un*x and Windows servers expect that, if Alt + an ASCII key is
+            // pressed, the key event for the ASCII key will be the same as if
+            // Alt had not been pressed.  On OS X, however, the Alt/Option keys
+            // act like AltGr keys, so if Alt + an ASCII key is pressed, the
+            // key code is the ASCII key symbol, but the key char is the code
+            // for the alternate graphics symbol.
+            if (keycode >= 65 && keycode <= 90 &&
+                !pressedKeys.containsValue(Keysyms.SHIFT_L) &&
+                !pressedKeys.containsValue(Keysyms.SHIFT_R))
+              key = keycode + 32;
+            else if (keycode == KeyEvent.VK_QUOTE)
+              key = '\'';
+            else if (keycode >= 32 && keycode <= 126)
+              key = keycode;
+          }
+          switch (keycode) {
+            // NOTE: For keyboard layouts that produce a different symbol when
+            // AltGr+{a dead key} is pressed, Java tends to send us the key
+            // code for the dead key.  It is difficult to distinguish those key
+            // events from key events in which the dead key itself is pressed.
+            // Fortunately, it seems that Java usually accompanies actual dead
+            // key events with a key character corresponding to the equivalent
+            // ASCII or ISO-8859-1 symbol (e.g. '^' for a dead circumflex) or
+            // KeyEvent.CHAR_UNDEFINED.  We assume that, if we receive the key
+            // code for a dead key, the key character is an ASCII/ISO-8859-1
+            // symbol, and it doesn't match the equivalent ASCII/ISO-8859-1
+            // symbol for the dead key, we should send the keysym for the key
+            // character instead of the keysym for the dead key.  We only do
+            // this for the dead keys that are known to have AltGr symbols
+            // associated with them in various QWERTY layouts.
+            case KeyEvent.VK_DEAD_ABOVEDOT:
+              if (location != KeyEvent.KEY_LOCATION_UNKNOWN)
+                keysym = Keysyms.DEAD_ABOVEDOT;
+              break;
+            case KeyEvent.VK_DEAD_ABOVERING:
+              if (location != KeyEvent.KEY_LOCATION_UNKNOWN)
+                keysym = Keysyms.DEAD_ABOVERING;
+              break;
+            case KeyEvent.VK_DEAD_ACUTE:
+              if (location != KeyEvent.KEY_LOCATION_UNKNOWN &&
+                  (key == '\'' || key == 180 || key > 255))
+                keysym = Keysyms.DEAD_ACUTE;
+              break;
+            case KeyEvent.VK_DEAD_BREVE:
+              if (location != KeyEvent.KEY_LOCATION_UNKNOWN)
+                keysym = Keysyms.DEAD_BREVE;
+              break;
+            case KeyEvent.VK_DEAD_CARON:
+              if (location != KeyEvent.KEY_LOCATION_UNKNOWN)
+                keysym = Keysyms.DEAD_CARON;
+              break;
+            case KeyEvent.VK_DEAD_CEDILLA:
+              if (location != KeyEvent.KEY_LOCATION_UNKNOWN &&
+                  (key == 184 || key > 255))
+                keysym = Keysyms.DEAD_CEDILLA;
+              break;
+            case KeyEvent.VK_DEAD_CIRCUMFLEX:
+              if (location != KeyEvent.KEY_LOCATION_UNKNOWN &&
+                  (key == '^' || key > 255))
+                keysym = Keysyms.DEAD_CIRCUMFLEX;
+              break;
+            case KeyEvent.VK_DEAD_DIAERESIS:
+              if (location != KeyEvent.KEY_LOCATION_UNKNOWN &&
+                  (key == '\"' || key == 168 || key > 255))
+                keysym = Keysyms.DEAD_DIAERESIS;
+              break;
+            case KeyEvent.VK_DEAD_DOUBLEACUTE:
+              if (location != KeyEvent.KEY_LOCATION_UNKNOWN)
+                keysym = Keysyms.DEAD_DOUBLEACUTE;
+              break;
+            case KeyEvent.VK_DEAD_GRAVE:
+              if (location != KeyEvent.KEY_LOCATION_UNKNOWN &&
+                  (key == '`' || key > 255))
+                keysym = Keysyms.DEAD_GRAVE;
+              break;
+            case KeyEvent.VK_DEAD_IOTA:
+              if (location != KeyEvent.KEY_LOCATION_UNKNOWN)
+                keysym = Keysyms.DEAD_IOTA;
+              break;
+            case KeyEvent.VK_DEAD_MACRON:
+              if (location != KeyEvent.KEY_LOCATION_UNKNOWN)
+                keysym = Keysyms.DEAD_MACRON;
+              break;
+            case KeyEvent.VK_DEAD_OGONEK:
+              if (location != KeyEvent.KEY_LOCATION_UNKNOWN)
+                keysym = Keysyms.DEAD_OGONEK;
+              break;
+            case KeyEvent.VK_DEAD_SEMIVOICED_SOUND:
+              if (location != KeyEvent.KEY_LOCATION_UNKNOWN)
+                keysym = Keysyms.DEAD_SEMIVOICED_SOUND;
+              break;
+            case KeyEvent.VK_DEAD_TILDE:
+              if (location != KeyEvent.KEY_LOCATION_UNKNOWN &&
+                  (key == '~' || key > 255))
+                keysym = Keysyms.DEAD_TILDE;
+              break;
+            case KeyEvent.VK_DEAD_VOICED_SOUND:
+              if (location != KeyEvent.KEY_LOCATION_UNKNOWN)
+                keysym = Keysyms.DEAD_VOICED_SOUND;
+              break;
+          }
+          if (keysym == -1)
+            keysym = UnicodeToKeysym.ucs2keysym(key);
+          if (keysym == -1) {
+            debugStr += " NO KEYSYM";
+            vlog.debug(debugStr);
+            return;
+          }
       }
     } else {
       // KEY_ACTION
       switch (keycode) {
-      case KeyEvent.VK_HOME:
-        if (location == KeyEvent.KEY_LOCATION_NUMPAD)
-          keysym = Keysyms.KP_Home;
-        else
-          keysym = Keysyms.Home;  break;
-      case KeyEvent.VK_END:
-        if (location == KeyEvent.KEY_LOCATION_NUMPAD)
-          keysym = Keysyms.KP_End;
-        else
-          keysym = Keysyms.End;  break;
-      case KeyEvent.VK_PAGE_UP:
-        if (location == KeyEvent.KEY_LOCATION_NUMPAD)
-          keysym = Keysyms.KP_Page_Up;
-        else
-          keysym = Keysyms.Page_Up;  break;
-      case KeyEvent.VK_PAGE_DOWN:
-        if (location == KeyEvent.KEY_LOCATION_NUMPAD)
-          keysym = Keysyms.KP_Page_Down;
-        else
-          keysym = Keysyms.Page_Down;  break;
-      case KeyEvent.VK_UP:
-        if (location == KeyEvent.KEY_LOCATION_NUMPAD)
-          keysym = Keysyms.KP_Up;
-        else
-          keysym = Keysyms.Up;  break;
-      case KeyEvent.VK_DOWN:
-        if (location == KeyEvent.KEY_LOCATION_NUMPAD)
-          keysym = Keysyms.KP_Down;
-        else
-         keysym = Keysyms.Down;  break;
-      case KeyEvent.VK_LEFT:
-        if (location == KeyEvent.KEY_LOCATION_NUMPAD)
-          keysym = Keysyms.KP_Left;
-        else
-         keysym = Keysyms.Left;  break;
-      case KeyEvent.VK_RIGHT:
-        if (location == KeyEvent.KEY_LOCATION_NUMPAD)
-          keysym = Keysyms.KP_Right;
-        else
-          keysym = Keysyms.Right;  break;
-      case KeyEvent.VK_F1:           keysym = Keysyms.F1;  break;
-      case KeyEvent.VK_F2:           keysym = Keysyms.F2;  break;
-      case KeyEvent.VK_F3:           keysym = Keysyms.F3;  break;
-      case KeyEvent.VK_F4:           keysym = Keysyms.F4;  break;
-      case KeyEvent.VK_F5:           keysym = Keysyms.F5;  break;
-      case KeyEvent.VK_F6:           keysym = Keysyms.F6;  break;
-      case KeyEvent.VK_F7:           keysym = Keysyms.F7;  break;
-      case KeyEvent.VK_F8:           keysym = Keysyms.F8;  break;
-      case KeyEvent.VK_F9:           keysym = Keysyms.F9;  break;
-      case KeyEvent.VK_F10:          keysym = Keysyms.F10;  break;
-      case KeyEvent.VK_F11:          keysym = Keysyms.F11;  break;
-      case KeyEvent.VK_F12:          keysym = Keysyms.F12;  break;
-      case KeyEvent.VK_F13:          keysym = Keysyms.F13;  break;
-      case KeyEvent.VK_HELP:         keysym = Keysyms.Help;  break;
-      case KeyEvent.VK_UNDO:         keysym = Keysyms.Undo;  break;
-      case KeyEvent.VK_AGAIN:        keysym = Keysyms.Redo;  break;
-      case KeyEvent.VK_PRINTSCREEN:  keysym = Keysyms.Print;  break;
-      case KeyEvent.VK_PAUSE:
-        if (ev.isControlDown())
-          keysym = Keysyms.Break;
-        else
-          keysym = Keysyms.Pause;
-        break;
-      case KeyEvent.VK_INSERT:
-        if (location == KeyEvent.KEY_LOCATION_NUMPAD)
-          keysym = Keysyms.KP_Insert;
-        else
-          keysym = Keysyms.Insert;  break;
-      case KeyEvent.VK_KP_DOWN:      keysym = Keysyms.KP_Down;  break;
-      case KeyEvent.VK_KP_LEFT:      keysym = Keysyms.KP_Left;  break;
-      case KeyEvent.VK_KP_RIGHT:     keysym = Keysyms.KP_Right;  break;
-      case KeyEvent.VK_KP_UP:        keysym = Keysyms.KP_Up;  break;
-      case KeyEvent.VK_NUM_LOCK:     keysym = Keysyms.Num_Lock;  break;
-      case KeyEvent.VK_WINDOWS:
-        if (location == KeyEvent.KEY_LOCATION_RIGHT)
-          keysym = Keysyms.Super_R;
-        else
-          keysym = Keysyms.Super_L;  break;
-      case KeyEvent.VK_CONTEXT_MENU: keysym = Keysyms.Menu;  break;
-      case KeyEvent.VK_SCROLL_LOCK:  keysym = Keysyms.Scroll_Lock;  break;
-      case KeyEvent.VK_CAPS_LOCK:    keysym = Keysyms.Caps_Lock;  break;
-      case KeyEvent.VK_BEGIN:
-        if (location == KeyEvent.KEY_LOCATION_NUMPAD)
-          keysym = Keysyms.KP_Begin;
-        else
-          keysym = Keysyms.Begin;  break;
-      default:
-        debugStr += " NO KEYSYM";
-        vlog.debug(debugStr);
-        return;
+        case KeyEvent.VK_HOME:
+          if (location == KeyEvent.KEY_LOCATION_NUMPAD)
+            keysym = Keysyms.KP_HOME;
+          else
+            keysym = Keysyms.HOME;
+          break;
+        case KeyEvent.VK_END:
+          if (location == KeyEvent.KEY_LOCATION_NUMPAD)
+            keysym = Keysyms.KP_END;
+          else
+            keysym = Keysyms.END;
+          break;
+        case KeyEvent.VK_PAGE_UP:
+          if (location == KeyEvent.KEY_LOCATION_NUMPAD)
+            keysym = Keysyms.KP_PAGE_UP;
+          else
+            keysym = Keysyms.PAGE_UP;
+          break;
+        case KeyEvent.VK_PAGE_DOWN:
+          if (location == KeyEvent.KEY_LOCATION_NUMPAD)
+            keysym = Keysyms.KP_PAGE_DOWN;
+          else
+            keysym = Keysyms.PAGE_DOWN;
+          break;
+        case KeyEvent.VK_UP:
+          if (location == KeyEvent.KEY_LOCATION_NUMPAD)
+            keysym = Keysyms.KP_UP;
+          else
+            keysym = Keysyms.UP;
+          break;
+        case KeyEvent.VK_DOWN:
+          if (location == KeyEvent.KEY_LOCATION_NUMPAD)
+            keysym = Keysyms.KP_DOWN;
+          else
+            keysym = Keysyms.DOWN;
+          break;
+        case KeyEvent.VK_LEFT:
+          if (location == KeyEvent.KEY_LOCATION_NUMPAD)
+            keysym = Keysyms.KP_LEFT;
+          else
+            keysym = Keysyms.LEFT;
+          break;
+        case KeyEvent.VK_RIGHT:
+          if (location == KeyEvent.KEY_LOCATION_NUMPAD)
+            keysym = Keysyms.KP_RIGHT;
+          else
+            keysym = Keysyms.RIGHT;
+          break;
+        case KeyEvent.VK_F1:            keysym = Keysyms.F1;  break;
+        case KeyEvent.VK_F2:            keysym = Keysyms.F2;  break;
+        case KeyEvent.VK_F3:            keysym = Keysyms.F3;  break;
+        case KeyEvent.VK_F4:            keysym = Keysyms.F4;  break;
+        case KeyEvent.VK_F5:            keysym = Keysyms.F5;  break;
+        case KeyEvent.VK_F6:            keysym = Keysyms.F6;  break;
+        case KeyEvent.VK_F7:            keysym = Keysyms.F7;  break;
+        case KeyEvent.VK_F8:            keysym = Keysyms.F8;  break;
+        case KeyEvent.VK_F9:            keysym = Keysyms.F9;  break;
+        case KeyEvent.VK_F10:           keysym = Keysyms.F10;  break;
+        case KeyEvent.VK_F11:           keysym = Keysyms.F11;  break;
+        case KeyEvent.VK_F12:           keysym = Keysyms.F12;  break;
+        case KeyEvent.VK_F13:           keysym = Keysyms.F13;  break;
+        case KeyEvent.VK_HELP:          keysym = Keysyms.HELP;  break;
+        case KeyEvent.VK_UNDO:          keysym = Keysyms.UNDO;  break;
+        case KeyEvent.VK_AGAIN:         keysym = Keysyms.REDO;  break;
+        case KeyEvent.VK_PRINTSCREEN:   keysym = Keysyms.PRINT;  break;
+        case KeyEvent.VK_PAUSE:
+          if (ev.isControlDown())
+            keysym = Keysyms.BREAK;
+          else
+            keysym = Keysyms.PAUSE;
+          break;
+        case KeyEvent.VK_INSERT:
+          if (location == KeyEvent.KEY_LOCATION_NUMPAD)
+            keysym = Keysyms.KP_INSERT;
+          else
+            keysym = Keysyms.INSERT;
+          break;
+        case KeyEvent.VK_KP_DOWN:       keysym = Keysyms.KP_DOWN;  break;
+        case KeyEvent.VK_KP_LEFT:       keysym = Keysyms.KP_LEFT;  break;
+        case KeyEvent.VK_KP_RIGHT:      keysym = Keysyms.KP_RIGHT;  break;
+        case KeyEvent.VK_KP_UP:         keysym = Keysyms.KP_UP;  break;
+        case KeyEvent.VK_NUM_LOCK:      keysym = Keysyms.NUM_LOCK;  break;
+        case KeyEvent.VK_WINDOWS:
+          if (location == KeyEvent.KEY_LOCATION_RIGHT)
+            keysym = Keysyms.SUPER_R;
+          else
+            keysym = Keysyms.SUPER_L;
+          break;
+        case KeyEvent.VK_CONTEXT_MENU:  keysym = Keysyms.MENU;  break;
+        case KeyEvent.VK_SCROLL_LOCK:   keysym = Keysyms.SCROLL_LOCK;  break;
+        case KeyEvent.VK_CAPS_LOCK:     keysym = Keysyms.CAPS_LOCK;  break;
+        case KeyEvent.VK_BEGIN:
+          if (location == KeyEvent.KEY_LOCATION_NUMPAD)
+            keysym = Keysyms.KP_BEGIN;
+          else
+            keysym = Keysyms.BEGIN;
+          break;
+        default:
+          debugStr += " NO KEYSYM";
+          vlog.debug(debugStr);
+          return;
       }
     }
 
     if (winAltGr) {
-      if (pressedKeys.containsValue(Keysyms.Control_L)) {
+      if (pressedKeys.containsValue(Keysyms.CONTROL_L)) {
         vlog.debug("Fake L Ctrl released");
-        writeKeyEvent(Keysyms.Control_L, false);
+        writeKeyEvent(Keysyms.CONTROL_L, false);
       }
-      if (pressedKeys.containsValue(Keysyms.Alt_L)) {
+      if (pressedKeys.containsValue(Keysyms.ALT_L)) {
         vlog.debug("Fake L Alt released");
-        writeKeyEvent(Keysyms.Alt_L, false);
+        writeKeyEvent(Keysyms.ALT_L, false);
       }
-      if (pressedKeys.containsValue(Keysyms.Control_R)) {
+      if (pressedKeys.containsValue(Keysyms.CONTROL_R)) {
         vlog.debug("Fake R Ctrl released");
-        writeKeyEvent(Keysyms.Control_R, false);
+        writeKeyEvent(Keysyms.CONTROL_R, false);
       }
-      if (pressedKeys.containsValue(Keysyms.Alt_R)) {
+      if (pressedKeys.containsValue(Keysyms.ALT_R)) {
         vlog.debug("Fake R Alt released");
-        writeKeyEvent(Keysyms.Alt_R, false);
+        writeKeyEvent(Keysyms.ALT_R, false);
       }
     }
     debugStr += String.format(" => 0x%04x", keysym);
     vlog.debug(debugStr);
-    pressedKeys.put(keycode, keysym);
+    Integer hashedKey = keycode;
+    // On Mac platforms, Java 11 assigns KeyEvent.VK_ALT_GRAPH to the right Alt
+    // key, whereas previous versions of Java assigned KeyEvent.VK_ALT to the
+    // same key.  However, Java 11 still exhibits the behavior described below
+    // when LAlt and RAlt are pressed simultaneously, so for the purposes of
+    // matching key release events to key press events, it is necessary to
+    // treat the RAlt key as an Alt key rather than an AltGr key.
+    if (VncViewer.OS.startsWith("mac os x")) {
+      if (hashedKey == KeyEvent.VK_ALT_GRAPH)
+        hashedKey = KeyEvent.VK_ALT;
+    // On Mac platforms, modifier key press/release events have a key code of 0
+    // if another location of the same modifier key is already pressed, so for
+    // the purposes of matching key release events to key press events, all
+    // locations of a modifier key have to be treated as if they are the same
+    // key.  On other platforms, we hash both the key code and location.
+    } else
+      hashedKey |= (location << 16);
+    pressedKeys.put(hashedKey, keysym);
     writeKeyEvent(keysym, down);
     if (winAltGr) {
-      if (pressedKeys.containsValue(Keysyms.Control_L)) {
+      if (pressedKeys.containsValue(Keysyms.CONTROL_L)) {
         vlog.debug("Fake L Ctrl pressed");
-        writeKeyEvent(Keysyms.Control_L, true);
+        writeKeyEvent(Keysyms.CONTROL_L, true);
       }
-      if (pressedKeys.containsValue(Keysyms.Alt_L)) {
+      if (pressedKeys.containsValue(Keysyms.ALT_L)) {
         vlog.debug("Fake L Alt pressed");
-        writeKeyEvent(Keysyms.Alt_L, true);
+        writeKeyEvent(Keysyms.ALT_L, true);
       }
-      if (pressedKeys.containsValue(Keysyms.Control_R)) {
+      if (pressedKeys.containsValue(Keysyms.CONTROL_R)) {
         vlog.debug("Fake R Ctrl pressed");
-        writeKeyEvent(Keysyms.Control_R, true);
+        writeKeyEvent(Keysyms.CONTROL_R, true);
       }
-      if (pressedKeys.containsValue(Keysyms.Alt_R)) {
+      if (pressedKeys.containsValue(Keysyms.ALT_R)) {
         vlog.debug("Fake R Alt pressed");
-        writeKeyEvent(Keysyms.Alt_R, true);
+        writeKeyEvent(Keysyms.ALT_R, true);
       }
     }
   }
 
-
-  public static final int rfbButton1Mask = 1;
-  public static final int rfbButton2Mask = 2;
-  public static final int rfbButton3Mask = 4;
-  public static final int rfbButton4Mask = 8;
-  public static final int rfbButton5Mask = 16;
 
   // EDT
   public void writePointerEvent(MouseEvent ev) {
@@ -2104,34 +2300,34 @@ public class CConn extends CConnection implements UserPasswdGetter,
       return;
 
     switch (ev.getID()) {
-    case MouseEvent.MOUSE_PRESSED:
-      switch(ev.getButton()) {
-      case 1:
-        buttonMask |= rfbButton1Mask;  break;
-      case 2:
-        buttonMask |= rfbButton2Mask;  break;
-      case 3:
-        buttonMask |= rfbButton3Mask;  break;
-      default:
-        return;
-      }
-      vlog.debug("mouse PRESS, button " + ev.getButton() +
-                 ", coords " + ev.getX() + "," + ev.getY());
-      break;
-    case MouseEvent.MOUSE_RELEASED:
-      switch(ev.getButton()) {
-      case 1:
-        buttonMask &= ~rfbButton1Mask;  break;
-      case 2:
-        buttonMask &= ~rfbButton2Mask;  break;
-      case 3:
-        buttonMask &= ~rfbButton3Mask;  break;
-      default:
-        return;
-      }
-      vlog.debug("mouse release, button " + ev.getButton() +
-                 ", coords " + ev.getX() + "," + ev.getY());
-      break;
+      case MouseEvent.MOUSE_PRESSED:
+        switch (ev.getButton()) {
+          case 1:
+            buttonMask |= RFB.BUTTON1_MASK;  break;
+          case 2:
+            buttonMask |= RFB.BUTTON2_MASK;  break;
+          case 3:
+            buttonMask |= RFB.BUTTON3_MASK;  break;
+          default:
+            return;
+        }
+        vlog.debug("mouse PRESS, button " + ev.getButton() +
+                   ", coords " + ev.getX() + "," + ev.getY());
+        break;
+      case MouseEvent.MOUSE_RELEASED:
+        switch (ev.getButton()) {
+          case 1:
+            buttonMask &= ~RFB.BUTTON1_MASK;  break;
+          case 2:
+            buttonMask &= ~RFB.BUTTON2_MASK;  break;
+          case 3:
+            buttonMask &= ~RFB.BUTTON3_MASK;  break;
+          default:
+            return;
+        }
+        vlog.debug("mouse release, button " + ev.getButton() +
+                   ", coords " + ev.getX() + "," + ev.getY());
+        break;
     }
 
     if (cp.width != desktop.scaledWidth ||
@@ -2165,11 +2361,15 @@ public class CConn extends CConnection implements UserPasswdGetter,
       return;
     int x, y, wheelMask;
     int clicks = ev.getWheelRotation();
-    if (clicks < 0) {
-      wheelMask = buttonMask | rfbButton4Mask;
-    } else {
-      wheelMask = buttonMask | rfbButton5Mask;
+    if (opts.reverseScroll) {
+      clicks = -clicks;
     }
+    if (clicks < 0) {
+      wheelMask = buttonMask | RFB.BUTTON4_MASK;
+    } else {
+      wheelMask = buttonMask | RFB.BUTTON5_MASK;
+    }
+
     if (viewport != null && (viewport.dx > 0 || viewport.dy > 0)) {
       int dx = (int)Math.floor(viewport.dx / desktop.scaleWidthRatio);
       int dy = (int)Math.floor(viewport.dy / desktop.scaleHeightRatio);
@@ -2213,8 +2413,8 @@ public class CConn extends CConnection implements UserPasswdGetter,
   // checkEncodings() sends a setEncodings message if one is needed.
   private void checkEncodings() {
     if (encodingChange && (writer() != null)) {
-      vlog.info("Requesting " + Encodings.encodingName(currentEncoding) +
-        " encoding");
+      vlog.info("Requesting " + RFB.encodingName(currentEncoding) +
+                " encoding");
       writer().writeSetEncodings(currentEncoding, lastServerEncoding, opts);
       encodingChange = false;
       if (viewport != null)
@@ -2224,6 +2424,7 @@ public class CConn extends CConnection implements UserPasswdGetter,
 
   // The following need no synchronization:
   VncViewer viewer;
+  @SuppressWarnings("checkstyle:VisibilityModifier")
   public static UserPasswdGetter upg;
 
   // shuttingDown is set in the EDT and is only ever tested by the RFB thread
@@ -2246,23 +2447,24 @@ public class CConn extends CConnection implements UserPasswdGetter,
 
   protected DesktopWindow desktop;
 
-  // FIXME: should be private
-  public PixelFormat serverPF;
+  PixelFormat serverPF;
   private PixelFormat fullColourPF;
 
   private boolean pendingPFChange;
   private PixelFormat pendingPF;
-  public boolean pendingServerResize;
+  boolean pendingServerResize;
   Rect pendingAutoResize = new Rect();
 
-  public int currentEncoding, lastServerEncoding;
+  int currentEncoding, lastServerEncoding;
 
   private boolean formatChange;
   private boolean encodingChange;
 
-  public boolean firstUpdate;
+  boolean firstUpdate;
   private boolean pendingUpdate;
   private boolean continuousUpdates;
+  boolean checkLayout;
+  boolean serverXinerama;
 
   private boolean forceNonincremental;
 
@@ -2270,11 +2472,13 @@ public class CConn extends CConnection implements UserPasswdGetter,
 
   private HashMap<Integer, Integer> pressedKeys;
   Viewport viewport;
+  Rectangle oldViewportBounds;
   boolean showToolbar;
   boolean keyboardGrabbed;
+  GraphicsDevice primaryGD;
 
-  public double tDecode, tBlit;
-  public long decodePixels, decodeRect, blitPixels, blits;
+  double tDecode, tBlit;
+  long decodePixels, decodeRect, blitPixels, blits;
   double tDecodeStart, tReadOld;
   boolean benchmark;
 

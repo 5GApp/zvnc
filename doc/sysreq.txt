@@ -2,7 +2,7 @@
 
 ** Linux/x86 and Other x86 Un*x Operating Systems
 
-|| || Server (x86) || Server (x86-64) || Client ||
+|| || Host (x86) || Host (x86-64) || Client ||
 | Recommended CPU \
 	| {list type=ul: \
 			{item:For optimal performance, the CPU should support SSE2 \
@@ -31,7 +31,9 @@
 	| {list type=ul: \
 			{item:For optimal performance, the X server should be configured to export \
 				True Color (24-bit or 32-bit) visuals.} \
-			{item:Java 5 or later (Java 6 or later recommended)}} \
+			{item:[[http://www.java.com][Oracle Java]] or OpenJDK \
+				(Oracle Java 8 or IcedTea-Web is required if using \
+				[[#JWS][Java Web Start]].)}} \
 	|
 #OPT: hiCol=first
 
@@ -39,15 +41,16 @@
 
 || || Client ||
 | Recommended CPU \
-	| Any Intel-based Mac \
+	| Any 64-bit Intel-based Mac \
 	|
 | O/S \
-	| OS X 10.5 "Leopard" or later (OS X 10.7 "Lion" or later recommended) \
+	| OS X 10.7 "Lion" or later \
 	|
 | Other Software \
 	| [[http://www.java.com][Oracle Java]] 8u40 or later, or \
-		[[https://support.apple.com/kb/DL1572][Java for OS X]] (see \
-		{ref prefix="Section ": MacJavaPerf} for more details) \
+		[[https://jdk.java.net][OpenJDK]] 8 or later (Oracle Java 8 or \
+		[[https://icedtea.classpath.org/wiki/IcedTea-Web][IcedTea-Web]] is \
+		required if using [[#JWS][Java Web Start]].) \
 	|
 #OPT: hiCol=first
 
@@ -61,7 +64,18 @@
 	| Windows 2000 SP1 or later \
 	|
 | Other \
-	| For optimal performance, the client display should have a 24-bit or 32-bit (True \
-		Color) color depth. \
+	| {list type=ul: \
+			{item:For optimal performance, the client display should have a 24-bit \
+				or 32-bit (True Color) color depth.} \
+			{item:SSH client ([[https://www.msys2.org][MSYS2]] or \
+				[[http://cygwin.com][Cygwin]] implementation preferred, since those \
+				implementations work with the \
+				[[#via][''-via'' and ''-tunnel'' options]] in the native Windows \
+				TurboVNC Viewer, but other SSH implementations will work without the \
+				''-via'' and ''-tunnel'' options.  {file: ssh.exe} should be in the \
+				''PATH''.)} \
+			{item:[[http://www.java.com][Oracle Java]] 8 or \
+				[[https://icedtea.classpath.org/wiki/IcedTea-Web][IcedTea-Web]] is \
+				required if using [[#JWS][Java Web Start]].}} \
 	|
 #OPT: hiCol=first

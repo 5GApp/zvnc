@@ -1,6 +1,6 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
  * Copyright (C) 2012, 2014 Brian P. Hinz
- * Copyright (C) 2012-2013 D. R. Commander.  All Rights Reserved.
+ * Copyright (C) 2012-2013, 2018 D. R. Commander.  All Rights Reserved.
  *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -51,8 +51,8 @@ public class FdInStream extends InStream {
 
   public FdInStream(FileDescriptor fd_, FdInStreamBlockCallback blockCallback_,
                     int bufSize_) {
-    fd = fd_; timeoutms = 0; blockCallback = blockCallback_;
-    timing = false; timeWaitedIn100us = 5; timedKbits = 0;
+    fd = fd_;  timeoutms = 0;  blockCallback = blockCallback_;
+    timing = false;  timeWaitedIn100us = 5;  timedKbits = 0;
     bufSize = ((bufSize_ > 0) ? bufSize_ : DEFAULT_BUF_SIZE);
     b = new byte[bufSize];
     ptr = end = offset = 0;
@@ -116,7 +116,7 @@ public class FdInStream extends InStream {
   public final void stopTiming() {
     timing = false;
     if (timeWaitedIn100us < timedKbits / 2)
-      timeWaitedIn100us = timedKbits / 2; // upper limit 20Mbit/s
+      timeWaitedIn100us = timedKbits / 2;  // upper limit 20Mbit/s
   }
 
   public final long kbitsPerSecond() {
@@ -179,9 +179,9 @@ public class FdInStream extends InStream {
         Integer tv;
 
         if (!wait) {
-          tv = new Integer(0);
+          tv = Integer.valueOf(0);
         } else if (timeoutms != -1) {
-          tv = new Integer(timeoutms);
+          tv = Integer.valueOf(timeoutms);
         } else {
           tv = null;
         }

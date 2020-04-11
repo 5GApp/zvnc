@@ -1,7 +1,7 @@
 environment:
-  LJT_VERSION: 1.5.1
-  LJT_64BIT_SDK: https://sourceforge.net/projects/libjpeg-turbo/files/%LJT_VERSION%/libjpeg-turbo-%LJT_VERSION%-vc64.exe
-  LJT_32BIT_SDK: https://sourceforge.net/projects/libjpeg-turbo/files/%LJT_VERSION%/libjpeg-turbo-%LJT_VERSION%-vc.exe
+  LJT_VERSION: 2.0.4
+  LJT_64BIT_SDK: "https://sourceforge.net/projects/libjpeg-turbo/files/%LJT_VERSION%/libjpeg-turbo-%LJT_VERSION%-vc64.exe"
+  LJT_32BIT_SDK: "https://sourceforge.net/projects/libjpeg-turbo/files/%LJT_VERSION%/libjpeg-turbo-%LJT_VERSION%-vc.exe"
 
 install:
   - cmd: >-
@@ -11,11 +11,11 @@ install:
 
       choco install -y InnoSetup
 
-      curl -fSL -o c:\installers\libjpeg-turbo-vc64.exe %LJT_64BIT_SDK%
+      curl -fSL -o c:\installers\libjpeg-turbo-vc64.exe "%LJT_64BIT_SDK%"
 
       c:\installers\libjpeg-turbo-vc64.exe /S
 
-      curl -fSL -o c:\installers\libjpeg-turbo-vc.exe %LJT_32BIT_SDK%
+      curl -fSL -o c:\installers\libjpeg-turbo-vc.exe "%LJT_32BIT_SDK%"
 
       c:\installers\libjpeg-turbo-vc.exe /S
 
@@ -27,17 +27,23 @@ install:
 
       set MSYSTEM=MINGW32
 
+      bash -c "pacman --noconfirm -S zip"
+
+      mklink /d "%ProgramData%\Oracle\Java32" "c:\Program Files (x86)\Java\jdk1.7.0"
+
       git clone --depth=1 https://github.com/TurboVNC/buildscripts.git c:/buildscripts
 
 build_script:
   - cmd: >-
       for /f %%i in ('"cygpath %CD%"') do set MINGWPATH=%%i
 
-      bash c:/buildscripts/buildvnc -r file://%MINGWPATH% -b /c/vnc.nightly %APPVEYOR_REPO_BRANCH% -v
+      bash c:/buildscripts/buildvnc -d %MINGWPATH% -b /c/vnc.nightly -v
 
       move c:\vnc.nightly\files\*.tar.gz .
 
       move c:\vnc.nightly\files\*.exe .
+
+      move c:\vnc.nightly\files\*.zip .
 
       move c:\vnc.nightly\log-windows.txt .
 
@@ -47,6 +53,9 @@ artifacts:
 
   - path: '*.exe'
     name: TurboVNC Viewer
+
+  - path: '*.zip'
+    name: TurboVNC Helper JARs
 
   - path: 'log-windows.txt'
     name: Build log

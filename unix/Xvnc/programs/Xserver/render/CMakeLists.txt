@@ -1,9 +1,10 @@
-include_directories(. ../fb ../mi)
+include_directories(. ../mi)
 
-# This code has a lot of type puns.  Disable strict aliasing just to be safe.
-if(CMAKE_COMPILER_IS_GNUCC)
-	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fno-strict-aliasing")
-endif()
+disable_compiler_warnings()
+handle_type_puns(
+	glyph.c
+	picture.c
+	render.c)
 
 add_library(render STATIC
 	animcur.c

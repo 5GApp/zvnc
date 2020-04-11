@@ -1,6 +1,7 @@
 /*
  * Copyright (C) 2002 RealVNC Ltd.  All Rights Reserved.
  * Copyright (C) 2003 Sun Microsystems, Inc.
+ * Copyright (C) 2017, 2019 D. R. Commander.  All Rights Reserved.
  *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -87,7 +88,7 @@ static const int bitsPerPackedPixel[] = {
 #endif /* ZRLE_ONCE */
 
 void ZRLE_ENCODE_TILE (PIXEL_T* data, int w, int h, zrleOutStream* os,
-		int zywrle_level, int *zywrleBuf, void *paletteHelper);
+                int zywrle_level, int *zywrleBuf, void *paletteHelper);
 
 #if BPP!=8
 #define ZYWRLE_ENCODE
@@ -95,7 +96,7 @@ void ZRLE_ENCODE_TILE (PIXEL_T* data, int w, int h, zrleOutStream* os,
 #endif
 
 static void ZRLE_ENCODE (int x, int y, int w, int h,
-		  zrleOutStream* os, void* buf
+                  zrleOutStream* os, void* buf
                   EXTRA_ARGS
                   )
 {
@@ -110,11 +111,11 @@ static void ZRLE_ENCODE (int x, int y, int w, int h,
       GET_IMAGE_INTO_BUF(tx,ty,tw,th,buf);
 
       if (cl->paletteHelper == NULL) {
-          cl->paletteHelper = (void *) calloc(sizeof(zrlePaletteHelper), 1);
+          cl->paletteHelper = (void *) rfbAlloc0(sizeof(zrlePaletteHelper));
       }
 
       ZRLE_ENCODE_TILE((PIXEL_T*)buf, tw, th, os,
-		      cl->zywrleLevel, cl->zywrleBuf, cl->paletteHelper);
+                      cl->zywrleLevel, cl->zywrleBuf, cl->paletteHelper);
     }
   }
   zrleOutStreamFlush(os);
@@ -122,7 +123,7 @@ static void ZRLE_ENCODE (int x, int y, int w, int h,
 
 
 void ZRLE_ENCODE_TILE(PIXEL_T* data, int w, int h, zrleOutStream* os,
-	int zywrle_level, int *zywrleBuf,  void *paletteHelper)
+        int zywrle_level, int *zywrleBuf,  void *paletteHelper)
 {
   /* First find the palette and the number of runs */
 
@@ -176,7 +177,7 @@ void ZRLE_ENCODE_TILE(PIXEL_T* data, int w, int h, zrleOutStream* os,
 
 #if BPP!=8
   if (zywrle_level > 0 && !(zywrle_level & 0x80))
-	  estimatedBytes >>= zywrle_level;
+          estimatedBytes >>= zywrle_level;
 #endif
 
   plainRleBytes = ((BPPOUT/8)+1) * (runs + singlePixels);
@@ -217,10 +218,12 @@ void ZRLE_ENCODE_TILE(PIXEL_T* data, int w, int h, zrleOutStream* os,
 
   if (useRle) {
 
-    PIXEL_T* ptr = data;
-    PIXEL_T* end = ptr + w * h;
     PIXEL_T* runStart;
     PIXEL_T pix;
+
+    ptr = data;
+    end = ptr + w * h;
+
     while (ptr < end) {
       int len;
       runStart = ptr;
@@ -255,7 +258,8 @@ void ZRLE_ENCODE_TILE(PIXEL_T* data, int w, int h, zrleOutStream* os,
 
     if (usePalette) {
       int bppp;
-      PIXEL_T* ptr = data;
+
+      ptr = data;
 
       /* packed pixels */
 
@@ -291,13 +295,12 @@ void ZRLE_ENCODE_TILE(PIXEL_T* data, int w, int h, zrleOutStream* os,
 #if BPP!=8
       if (zywrle_level > 0 && !(zywrle_level & 0x80)) {
         ZYWRLE_ANALYZE(data, data, w, h, w, zywrle_level, zywrleBuf);
-	ZRLE_ENCODE_TILE(data, w, h, os, zywrle_level | 0x80, zywrleBuf, paletteHelper);
+        ZRLE_ENCODE_TILE(data, w, h, os, zywrle_level | 0x80, zywrleBuf, paletteHelper);
       }
       else
 #endif
       {
 #ifdef CPIXEL
-        PIXEL_T *ptr;
         for (ptr = data; ptr < data+w*h; ptr++)
           zrleOutStreamWRITE_PIXEL(os, *ptr);
 #else

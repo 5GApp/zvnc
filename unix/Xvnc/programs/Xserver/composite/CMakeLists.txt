@@ -1,9 +1,7 @@
-include_directories(../damageext ../mi ../miext/damage ../render ../xfixes)
+include_directories(../Xi ../damageext ../mi  ../render ../xfixes)
 
-# This code has a lot of type puns.  Disable strict aliasing just to be safe.
-if(CMAKE_COMPILER_IS_GNUCC)
-	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fno-strict-aliasing")
-endif()
+disable_compiler_warnings()
+handle_type_puns(compext.c)
 
 add_library(composite STATIC
 	compalloc.c

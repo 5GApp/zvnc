@@ -35,6 +35,8 @@ elseif(CPU_TYPE STREQUAL "arm64")
 	set(DEBARCH ${CPU_TYPE})
 elseif(CPU_TYPE STREQUAL "arm")
 	set(DEBARCH armel)
+elseif(CMAKE_SYSTEM_PROCESSOR_LC STREQUAL "ppc64le")
+	set(DEBARCH ppc64el)
 else()
 	set(DEBARCH ${CMAKE_SYSTEM_PROCESSOR})
 endif()
@@ -62,19 +64,19 @@ endif() # Linux
 
 
 ###############################################################################
-# Windows installer (NullSoft Installer)
+# Windows installer (Inno Setup)
 ###############################################################################
 
 if(WIN32)
 
 if(BITS EQUAL 64)
-	set(INST_NAME ${CMAKE_PROJECT_NAME}64-${VERSION})
+	set(INST_NAME ${CMAKE_PROJECT_NAME}-${VERSION}-x64)
 	set(INST_DEFS -DWIN64)
 else()
-	set(INST_NAME ${CMAKE_PROJECT_NAME}-${VERSION})
+	set(INST_NAME ${CMAKE_PROJECT_NAME}-${VERSION}-x86)
 endif()
 
-set(INST_DEPENDS vncviewer putty)
+set(INST_DEPENDS vncviewer)
 if(TVNC_BUILDJAVA)
 	set(INST_DEFS ${INST_DEFS} "-DJAVA")
 	set(INST_DEPENDS ${INST_DEPENDS} java)
@@ -110,7 +112,12 @@ endif() # WIN32
 # Mac DMG
 ###############################################################################
 
-if(APPLE AND TVNC_BUILDJAVA)
+if(APPLE AND TVNC_BUILDJAVA AND TVNC_BUILDNATIVE)
+
+set(OSX_APP_CERT_NAME "" CACHE STRING
+	"Name of the Developer ID Application certificate (in the macOS keychain) that should be used to sign the TurboVNC Viewer app & DMG.  Leave this blank to generate an unsigned app/DMG.")
+set(OSX_INST_CERT_NAME "" CACHE STRING
+	"Name of the Developer ID Installer certificate (in the macOS keychain) that should be used to sign the TurboVNC installer package.  Leave this blank to generate an unsigned package.")
 
 string(REGEX REPLACE "/" ":" CMAKE_INSTALL_MACPREFIX ${CMAKE_INSTALL_PREFIX})
 string(REGEX REPLACE "^:" "" CMAKE_INSTALL_MACPREFIX
@@ -118,21 +125,14 @@ string(REGEX REPLACE "^:" "" CMAKE_INSTALL_MACPREFIX
 
 configure_file(release/makemacpkg.in pkgscripts/makemacpkg @ONLY)
 configure_file(release/makemacapp.in pkgscripts/makemacapp)
-set(MINOSVER 10.7)
 configure_file(release/Distribution.xml.in pkgscripts/Distribution.xml)
-set(MINOSVER 10.5)
-configure_file(release/Distribution.xml.in
-	pkgscripts/Distribution-AppleJava.xml)
 configure_file(release/Info.plist.in pkgscripts/Info.plist)
-configure_file(release/Info-AppleJava.plist.in
-	pkgscripts/Info-AppleJava.plist)
 configure_file(release/Package.plist.in pkgscripts/Package.plist)
 configure_file(release/uninstall.in pkgscripts/uninstall)
-configure_file(release/uninstall.applescript.in pkgscripts/uninstall.applescript)
+configure_file(release/uninstall.applescript.in
+	pkgscripts/uninstall.applescript)
 
 add_custom_target(dmg sh pkgscripts/makemacpkg
-	SOURCES pkgscripts/makemacpkg)
-add_custom_target(compatdmg sh pkgscripts/makemacpkg compat
 	SOURCES pkgscripts/makemacpkg)
 
 endif() # APPLE

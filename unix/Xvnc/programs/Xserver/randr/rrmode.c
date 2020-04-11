@@ -1,5 +1,6 @@
 /*
  * Copyright © 2006 Keith Packard
+ * Copyright © 2017 D. R. Commander
  *
  * Permission to use, copy, modify, distribute, and sell this software and its
  * documentation for any purpose is hereby granted without fee, provided that
@@ -68,6 +69,15 @@ RRModeCreate(xRRModeInfo * modeInfo, const char *name, ScreenPtr userScreen)
     if (!RRInit())
         return NULL;
 
+#ifdef TURBOVNC
+    /*
+     * The screen structure uses a signed short to represent width and height,
+     * so activating a mode with width or height > 32767 can crash the server.
+     */
+    if (modeInfo->width > MAXSHORT || modeInfo->height > MAXSHORT)
+        return NULL;
+#endif
+
     mode = malloc(sizeof(RRModeRec) + modeInfo->nameLength + 1);
     if (!mode)
         return NULL;
@@ -79,7 +89,7 @@ RRModeCreate(xRRModeInfo * modeInfo, const char *name, ScreenPtr userScreen)
     mode->userScreen = userScreen;
 
     if (num_modes)
-        newModes = realloc(modes, (num_modes + 1) * sizeof(RRModePtr));
+        newModes = reallocarray(modes, num_modes + 1, sizeof(RRModePtr));
     else
         newModes = malloc(sizeof(RRModePtr));
 
@@ -89,8 +99,10 @@ RRModeCreate(xRRModeInfo * modeInfo, const char *name, ScreenPtr userScreen)
     }
 
     mode->mode.id = FakeClientID(0);
-    if (!AddResource(mode->mode.id, RRModeType, (pointer) mode))
+    if (!AddResource(mode->mode.id, RRModeType, (void *) mode)) {
+        free(newModes);
         return NULL;
+    }
     modes = newModes;
     modes[num_modes++] = mode;
 
@@ -164,7 +176,7 @@ RRModesForScreen(ScreenPtr pScreen, int *num_ret)
     RRModePtr *screen_modes;
     int num_screen_modes = 0;
 
-    screen_modes = malloc((num_modes ? num_modes : 1) * sizeof(RRModePtr));
+    screen_modes = xallocarray((num_modes ? num_modes : 1), sizeof(RRModePtr));
     if (!screen_modes)
         return NULL;
 
@@ -248,7 +260,7 @@ RRModeDestroy(RRModePtr mode)
 }
 
 static int
-RRModeDestroyResource(pointer value, XID pid)
+RRModeDestroyResource(void *value, XID pid)
 {
     RRModeDestroy((RRModePtr) value);
     return 1;
@@ -282,7 +294,7 @@ int
 ProcRRCreateMode(ClientPtr client)
 {
     REQUEST(xRRCreateModeReq);
-    xRRCreateModeReply rep = { 0 };
+    xRRCreateModeReply rep;
     WindowPtr pWin;
     ScreenPtr pScreen;
     xRRModeInfo *modeInfo;
@@ -310,17 +322,18 @@ ProcRRCreateMode(ClientPtr client)
     if (!mode)
         return error;
 
-    rep.type = X_Reply;
-    rep.pad0 = 0;
-    rep.sequenceNumber = client->sequence;
-    rep.length = 0;
-    rep.mode = mode->mode.id;
+    rep = (xRRCreateModeReply) {
+        .type = X_Reply,
+        .sequenceNumber = client->sequence,
+        .length = 0,
+        .mode = mode->mode.id
+	};
     if (client->swapped) {
         swaps(&rep.sequenceNumber);
         swapl(&rep.length);
         swapl(&rep.mode);
     }
-    WriteToClient(client, sizeof(xRRCreateModeReply), (char *) &rep);
+    WriteToClient(client, sizeof(xRRCreateModeReply), &rep);
     /* Drop out reference to this mode */
     RRModeDestroy(mode);
     return Success;

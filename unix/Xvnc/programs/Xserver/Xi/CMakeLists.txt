@@ -1,9 +1,6 @@
-include_directories(../mi)
+include_directories(. ../mi ../render ../xfixes)
 
-# This code has a lot of type puns.  Disable strict aliasing just to be safe.
-if(CMAKE_COMPILER_IS_GNUCC)
-	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fno-strict-aliasing")
-endif()
+handle_type_puns()
 
 add_library(Xi STATIC
 	allowev.c
@@ -45,6 +42,7 @@ add_library(Xi STATIC
 	ungrdevb.c
 	ungrdevk.c
 	xiallowev.c
+	xibarriers.c
 	xichangecursor.c
 	xichangehierarchy.c
 	xigetclientpointer.c

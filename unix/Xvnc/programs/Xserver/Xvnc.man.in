@@ -1,0 +1,706 @@
+'\" t
+.\" ** The above line should force tbl to be a preprocessor **
+.\" Man page for Xvnc
+.\"
+.\" Copyright (C) 1998 Marcus.Brinkmann@ruhr-uni-bochum.de
+.\" Copyright (C) 2000, 2001 Red Hat, Inc.
+.\" Copyright (C) 2001, 2002 Constantin Kaplinsky
+.\" Copyright (C) 2005-2008 Sun Microsystems, Inc.
+.\" Copyright (C) 2010, 2012, 2014-2019 D. R. Commander
+.\" Copyright (C) 2010 University Corporation for Atmospheric Research
+.\"
+.\" You may distribute under the terms of the GNU General Public
+.\" License as specified in the file LICENCE.TXT that comes with the
+.\" TightVNC distribution.
+.\"
+.TH Xvnc 1 "September 2019" "" "TurboVNC"
+.SH NAME
+Xvnc \- the TurboVNC X server
+.SH SYNOPSIS
+.TP
+.nh
+.ad l
+\fBXvnc\fR
+[:\fIdisplay\fR] [\fITurboVNC-options\fR...] [\fIX-options\fR...]
+.ad
+.hy
+.SH DESCRIPTION
+\fBXvnc\fR is a VNC (Virtual Network Computing) server for Unix and Linux
+systems.  It acts like a normal X server, except that it sends its output
+to a virtual rather than a physical display.  Remote machines can connect
+to the VNC server and see/control the output of this virtual display
+[see \fBvncviewer\fR(1).]  Xvnc is built using the X.org source code and shares
+many options with it.
+
+Normally, you don't need to start Xvnc manually-- use the
+\fBvncserver\fR(1) wrapper script instead.  This script sets reasonable
+defaults for the TurboVNC session, checks many error conditions, etc.
+
+Please read the SECURITY CONCERNS section if you plan to use VNC on an
+untrusted network.
+.SH OPTIONS
+Xvnc supports many standard X server options and a number of
+VNC-specific options.  To see which standard X server options are
+supported, please look at the output of \fBXvnc\fR \fI\-help\fR and read
+the \fBXserver\fR(1) manual page.
+
+The VNC-specific options are as follows:
+
+.TP
+\fBTURBOVNC CONNECTION OPTIONS\fR
+
+.TP
+\fB\-alwaysshared\fR
+Always treat new connections as shared.  Never disconnect existing users
+or deny new connections when a new user tries to connect to a TurboVNC session
+that is already occupied.
+
+.TP
+\fB\-deferupdate\fR \fItime\fR
+Amount of time, in milliseconds, for which to defer screen updates (default:
+40.)  Deferring updates helps to coalesce many small desktop changes into a few
+larger updates, thus saving network bandwidth.
+
+.TP
+\fB\-desktop\fR \fIname\fR
+Set VNC desktop name ("x11" by default.)
+
+.TP
+\fB\-disconnect\fR
+Disconnect existing users when a new non-shared connection is established,
+rather than refusing the new connection.
+
+.TP
+\fB\-httpd\fR \fIdir\fR
+Specify directory where the Java viewer classes are located.
+
+.TP
+\fB\-httpport\fR \fIport\fR
+TCP port that the server should use when listening for connections from
+web browsers.
+
+.TP
+\fB\-idletimeout\fR \fItime\fR
+Amount of time, in seconds, that the TurboVNC session can sit idle (with no VNC
+viewer connections) before it automatically exits (default: no timeout.)  This
+argument has no effect if the \fImax-idle-timeout\fR directive is specified in
+the security configuration file and if that value is lower than
+\fItime\fR.
+
+.TP
+\fB\-inetd\fR
+If Xvnc is launched by inetd, this option causes Xvnc to redirect
+network input/output to stdin/stdout.
+
+.TP
+\fB\-interface\fR \fIip-address\fR
+Listen only on the network interface with the specified IP address.
+
+.TP
+\fB\-ipv6\fR
+Enable IPv6 support.  If your system supports IPv4-mapped IPv6 addresses, then
+this option causes Xvnc to accept both local and remote connections from both
+IPv4 and IPv6 clients.  Otherwise, only connections from IPv6 clients will be
+accepted.  If \fB-localhost\fR is also specified, or if the
+\fIno-remote-connections\fR directive is specified in the security
+configuration file, then this option causes Xvnc to accept only local
+connections from IPv6 clients (the equivalent of specifying
+\fB-interface ::1\fR.)
+
+.TP
+\fB\-localhost\fR
+Only allow loopback connections from localhost.  This option is useful
+in conjunction with SSH tunneling.  This option can be set for all TurboVNC
+sessions on this system by using the \fIno-remote-connections\fR directive in
+the security configuration file.  See the SECURITY CONFIGURATION
+FILE section for more details.  Unless \fB-ipv6\fR is also specified, only
+IPv4 loopback connections are accepted.
+
+.TP
+\fB-maxclipboard\fR \fIbytes\fR
+Set the maximum clipboard transfer size to \fIbytes\fR.
+
+.TP
+\fB-maxconnections\fR \fIconnection-count\fR
+Allow no more than \fIconnection-count\fR simultaneous VNC viewer connections,
+where 1 <= \fIconnection-count\fR <= 500 (default: 100.)
+
+.TP
+\fB\-nevershared\fR
+Never treat new connections as shared.  Do not allow simultaneous user
+connections to the same TurboVNC session.
+
+.TP
+\fB-noclipboardrecv\fR
+Disable inbound clipboard synchronization.  This prevents the clipboard of
+the TurboVNC session from being synchronized with the clipboard of a connected
+viewer whenever the latter changes.  This option can be set for all
+TurboVNC sessions on this system by using the \fIno-clipboard-recv\fR
+directive in the security configuration file.  See the SECURITY
+CONFIGURATION FILE section for more details.
+
+.TP
+\fB-noclipboardsend\fR
+Disable outbound clipboard synchronization.  This prevents the clipboard of
+any connected viewers from being synchronized with the clipboard of the
+TurboVNC session whenever the latter changes.  This option can be set for all
+TurboVNC sessions on this system by using the \fIno-clipboard-send\fR
+directive in the security configuration file.  See the SECURITY
+CONFIGURATION FILE section for more details.
+
+.TP
+\fB\-noflowcontrol\fR
+Normally, the TurboVNC Server will use the RFB flow control extensions
+(Continuous Updates and Fence) with any connected viewers that support them.
+These extensions allow the server to send framebuffer updates at the maximum
+rate that the network connection and the viewer can handle, instead of waiting
+for viewers to explicitly request updates.  Disabling flow control causes the
+TurboVNC Server to send framebuffer updates at the maximum rate that the
+network connection can handle, irrespective of the viewer.  For full-screen
+video and 3D applications, this may produce smoother animation on high-latency
+networks, although it will almost certainly also produce a noticeable lag
+between mouse movement and application response, since the TCP buffers will be
+100% full.
+
+.TP
+\fB\-noreverse\fR
+Do not allow reverse VNC connections to be made from this TurboVNC session.
+This option can be set for all TurboVNC sessions on this system by using the
+\fIno-reverse-connections\fR directive in the security configuration
+file.  See the SECURITY CONFIGURATION FILE section for more details.
+
+.TP
+\fB\-rfbport\fR \fIport\fR
+TCP port that the server should use when listening for connections from normal
+VNC viewers.
+
+.TP
+\fB\-rfbwait\fR \fItime\fR
+Maximum time, in milliseconds, to wait for an RFB client (VNC viewer.)
+
+.TP
+\fB\-udpinputport\fR \fIport\fR
+UDP port for keyboard/pointer data.
+
+.TP
+\fBTURBOVNC INPUT OPTIONS\fR
+
+.TP
+\fB\-compatiblekbd\fR
+Set META and ALT keys to the same X modifier flag, as in the original
+version of Xvnc by AT&T labs (this option is specific to TightVNC/TurboVNC.)
+
+.TP
+\fB\-nocursor\fR
+Don't display a mouse pointer on the remote desktop.
+
+.TP
+\fB\-viewonly\fR
+Don't accept keyboard and pointer events from viewers.  All viewers will
+be able to see the desktop but won't be able to control it.
+
+.TP
+\fB\-virtualtablet\fR
+TurboVNC can handle extended input devices in one of two ways:
+
+\fBRemote\ X\ Input\ Mode\fR (default)
+
+X Input devices are created in the TurboVNC session only when a viewer requests
+their creation.  For instance, the TurboVNC Un*x/Linux Viewer sends information
+about client-side X Input extended pointer devices to the server, and the
+server makes copies of those devices.  The viewer then sends extended input
+events from the client-side devices to the server, where they are mapped to the
+respective copies of the client-side devices.  If another viewer attempts to
+create a remote X Input device with the same name, then the existing
+server-side device is shared with the new viewer.  The server-side devices are
+deleted automatically when all viewers that use them have disconnected.  This
+is the most flexible way of handling extended input devices, because it allows
+any generic X Input pointer device (spaceballs, tablets, etc.) on the client
+machine to be used by the server.
+
+\fBVirtual\ Tablet\ Mode\fR (enabled with this command-line option)
+
+In Virtual Tablet Mode, the TurboVNC Server creates virtual stylus, eraser,
+touch, and pad devices designed to emulate a Wacom tablet, and it maps all
+extended input events from all viewers to these devices (events from
+client-side stylus, eraser, touch, and pad devices are mapped to the
+corresponding virtual device in the TurboVNC session, and other events are
+ignored.)  This mode is less generic than Remote X Input Mode, and it probably
+will not work with devices other than tablets (perhaps not even with non-Wacom
+tablets.)  Virtual Tablet mode is useful when running specific applications
+from xstartup.turbovnc, rather than a window manager.  Because applications
+usually check for the presence of X Input devices at startup, by the time the
+first viewer connects and requests that the client-side devices be cloned, it
+is too late.
+
+.TP
+\fBTURBOVNC DISPLAY OPTIONS\fR
+
+.TP
+\fB\-geometry\fR \fIwidth\fR\fBx\fR\fIheight\fR
+Set width and height of the virtual X display (single-screen.)
+
+.TP
+\fB\-geometry\fR \fIW0\fRx\fIH0\fR+\fIX0\fR+\fIY0\fR[,\fIW1\fRx\fIH1\fR+\fIX1\fR+\fIY1\fR,...,\fIWn\fRx\fIHn\fR+\fIXn\fR+\fIYn\fR]
+Set multi-screen geometry of the virtual X display.  Wi and Hi are the width
+and height of Screen i, and Xi and Yi specify the offset of Screen i relative
+to the origin.  The framebuffer width and height are determined by the bounding
+box of all screens.
+
+.TP
+\fB\-pixelformat\fR \fBrgb\fR\fINNN\fR|\fBbgr\fR\fINNN\fR
+Specify the pixel format of the virtual X display.  Xvnc can use any pixel
+format you choose, but if this pixel format does not match the pixel format
+of the display on which vncviewer is running, then Xvnc will perform pixel
+format conversion prior to sending images to vncviewer.  This can slow
+performance.  The default pixel format, rgb888, is equivalent to BGRA on little
+endian systems or ARGB on big endian systems.  A pixel format of bgr888 is
+equivalent to RGBA on little endian systems or ABGR on big endian systems.
+
+.TP
+\fBTURBOVNC ENCODING OPTIONS\fR
+
+.TP
+\fB\-alr\fR \fItime\fR
+Enable the automatic lossless refresh (ALR) feature for this TurboVNC session
+and set the timeout to \fItime\fR seconds.  If ALR is enabled and no
+framebuffer updates have been sent to a given viewer in the past \fItime\fR
+seconds, and if "eligible" areas of the screen have been transmitted to that
+viewer using JPEG since the last lossless refresh, then those areas of the
+screen are re-transmitted using mathematically lossless image compression
+(specifically, the Lossless Tight + Zlib encoding method.)
+
+The default behavior is to only allow regions drawn using X[Shm]PutImage() or
+CopyRect to be eligible for ALR.  The intent of this behavior is to restrict
+ALR mainly to the pixels drawn by VirtualGL, but it also prevents blinking
+cursors (which are usually drawn using XCopyArea()) from confusing the ALR
+algorithm.  You can, however, set the \fBTVNC_ALRALL\fR environment variable to
+\fB1\fR to make all screen regions eligible for ALR.  You can also set
+\fBTVNC_ALRCOPYRECT\fR to \fB0\fR to make screen regions drawn with CopyRect
+ineligible for ALR (approximating the behavior of TurboVNC 1.2.1 and prior.)
+
+.TP
+\fB\-alrqual\fR \fIlevel\fR
+Instead of sending a mathematically lossless image for an automatic lossless
+refresh, send a JPEG image with the specified JPEG quality (95 is a good
+choice, as this is the equivalent of the "Tight + Perceptually Lossless JPEG"
+preset.)
+
+.TP
+\fB\-alrsamp 1X\fR|\fB2X\fR|\fB4X\fR|\fBgray\fR
+Specify the level of chrominance subsampling to be used when sending an
+automatic lossless refresh (default: 1X.)  This has no effect unless
+\fB-alrqual\fR is also specified.
+
+.TP
+\fB\-economictranslate\fR
+Use less memory-hungry pixel format translation.
+
+.TP
+\fB\-interframe\fR
+Normally, the TurboVNC Server will enable interframe comparison whenever
+Compression Level 5 or above is requested (if using Tight encoding, compression
+levels 5-7 are equivalent to compression levels 0-2 with interframe comparison
+enabled.)  Specifying \fB-interframe\fR will enable interframe comparison all
+the time, regardless of the compression level that was requested by the viewer.
+Interframe comparison maintains a copy of the remote framebuffer for each
+connected viewer and compares each framebuffer update with the copy to ensure
+that redundant updates are not sent to the viewer.  This prevents unnecessary
+network traffic if an ill-behaved application draws the same thing over and
+over again, but interframe comparison also causes the TurboVNC Server to use
+more CPU time and much more memory, and thus it is recommended that this
+feature be used only when needed.
+
+.TP
+\fB\-nointerframe\fR
+Specifying this option will disable interframe comparison, regardless of the
+compression level that was requested by the viewer.
+
+.TP
+\fB\-nomt\fR
+Disable multithreaded Tight encoding
+
+.TP
+\fB\-nthreads\fR \fIthread-count\fR
+Specify the number of threads to use with multithreaded Tight encoding.  The
+default is to use one thread per CPU core, up to a maximum of 4 (because using
+more than 4 encoding threads breaks compatibility with viewers other than the
+TurboVNC Viewer.)  The server will not allow the thread count to exceed 8, nor
+to exceed the number of CPU cores.
+
+.TP
+\fBTURBOVNC SECURITY AND AUTHENTICATION OPTIONS\fR
+
+.TP
+\fB\-pamsession\fR
+Create a new PAM session for each viewer that authenticates using the
+username/password of the user who owns the TurboVNC session, and leave the PAM
+session open until the viewer disconnects.  When using Kerberos, this causes
+pam_krb5 to create a Kerberos ticket for the TurboVNC session, which can be
+reused within the session to provide access to other services.
+
+This option can be disabled for all TurboVNC sessions on this system by using
+the \fIno-pam-sessions\fR directive in the security configuration file.  See
+the SECURITY CONFIGURATION FILE section for more details.
+
+.TP
+\fB\-rfbauth\fR \fIpasswd-file\fR
+Specify the password file to use with VNC Password authentication.
+\fIpasswd-file\fR can be created using the \fBvncpasswd\fR(1) utility.  This
+argument has no effect if \fIpermitted-security-types\fR is specified in the
+security configuration file and none of the VNC security types are listed as
+permitted security types.
+
+.TP
+\fB-securitytypes\fR \fItype-list\fR
+\fItype-list\fR is a comma-separated list of security types that should be
+enabled for this TurboVNC session.  Refer to the SECURITY EXTENSIONS section
+below for a description of available security types.  Only security types that
+are permitted in the security configuration file will actually be enabled.  If
+\fItype-list\fR contains no permitted security types, then Xvnc will exit with
+an error.  If this argument is not specified, then Xvnc uses a default value of
+"TLSVnc, TLSOtp, TLSPlain, X509Vnc, X509Otp, X509Plain, VNC, OTP, UnixLogin,
+Plain".  Security types are case-insensitive.
+
+.TP
+\fB\-x509cert\fR \fIcert\fR
+Specify the X.509 signed certificate file (in PEM format) to use with X.509
+encryption.  This argument has no effect if \fIpermitted-security-types\fR is
+specified in the security configuration file and none of the X.509 security
+types are listed as permitted security types.
+
+.TP
+\fB\-x509key\fR \fIkey\fR
+Specify the X.509 private key file (in PEM format) to use with X.509
+encryption.  This argument has no effect if \fIpermitted-security-types\fR is
+specified in the security configuration file and none of the X.509 security
+types are listed as permitted security types.
+
+.SH SECURITY EXTENSIONS
+The TurboVNC Server supports 13 security types, each of which specifies an
+authentication scheme (a technique used to transmit authentication credentials
+from a VNC viewer to the VNC server), an authentication method (a technique
+used by the VNC server to validate the authentication credentials), and an
+encryption method.
+
+The authentication methods that the TurboVNC Server supports are as follows:
+
+.IP \fBNone\fR
+No authentication.  Xvnc will not enable any security types that use this
+authentication method unless no other security types are enabled.  This
+authentication method should generally only be used in conjunction with SSH or
+another security mechanism that provides authentication outside of the
+context of Xvnc.
+
+.IP \fBVNC\ Password\fR
+Authenticate using a VNC password file created by the \fBvncpasswd\fR(1)
+utility and specified with the \fB-rfbauth\fR command-line argument to Xvnc.
+This authentication method uses the Standard VNC authentication scheme to
+receive authentication credentials from a VNC viewer.  The Standard VNC
+authentication scheme encrypts the VNC password using 56-bit DES, which is a
+weak form of encryption.
+
+.IP \fBOne-Time\ Password\ (OTP)\fR
+Authenticate using a one-time password.  OTPs for full control or view-only
+access can be created using the \fBvncpasswd\fR(1) utility.  OTPs are discarded
+by Xvnc immediately after they are used, so an additional OTP must be generated
+before another user is allowed to connect using this method.  OTP
+authentication is handy for sharing a TurboVNC session with another person with
+whom you do not wish to share your VNC password.  This authentication method
+uses the Standard VNC authentication scheme to receive authentication
+credentials from a VNC viewer.
+
+.IP \fBPAM\ User/Password\fR
+Authenticate using Pluggable Authentication Modules (PAM.)  This authentication
+method is typically used to authenticate against Unix login credentials, but it
+can also be used to authenticate against any other user/password authentication
+credentials that can be accessed through PAM.  A valid PAM service
+configuration must be created by the system administrator (see the SECURITY
+CONFIGURATION FILE section for details.)  On some systems, it may be
+necessary to make the Xvnc binary setuid root in order to authenticate against
+credentials other than those of the user running Xvnc.
+
+PAM User/Password authentication uses the TightVNC Unix Login or the VeNCrypt
+Plain authentication scheme to receive authentication credentials from a VNC
+viewer.  Since both of those authentication schemes transmit the password using
+plain text, it is strongly recommended that TLS or SSH encryption be enforced
+in the security configuration file if any security types using PAM
+User/Password authentication are permitted.
+.P
+
+The security types that the TurboVNC Server supports are as follows:
+
+.IP \fBNone\fR
+No encryption and no authentication.
+
+This security type can be used with VNC viewers that understand the
+"None" RFB security type or the "Tight" RFB security type with the "None"
+authentication capability.
+
+.IP \fBTLSNone\fR
+Anonymous TLS (Transport Layer Security) encryption with no authentication.
+
+This security type can be used with VNC viewers that understand the "VeNCrypt"
+RFB security type with the "TLSNone" VeNCrypt sub-type.
+
+.IP \fBX509None\fR
+TLS encryption with a specified X.509 certificate and no authentication.
+
+This security type can be used with VNC viewers that understand the "VeNCrypt"
+RFB security type with the "X509None" VeNCrypt sub-type.
+
+.IP \fBVNC\fR
+VNC Password/Standard VNC authentication with no encryption.
+
+This security type can be used with VNC viewers that understand the "VNC" RFB
+security type or the "Tight" RFB security type with the "VNC" authentication
+capability.
+
+.IP \fBTLSVnc\fR
+Anonymous TLS encryption with VNC Password/Standard VNC authentication.
+
+This security type can be used with VNC viewers that understand the "VeNCrypt"
+RFB security type with the "TLSVnc" VeNCrypt sub-type.
+
+.IP \fBX509Vnc\fR
+TLS encryption with a specified X.509 certificate and VNC password/Standard VNC
+authentication.
+
+This security type can be used with VNC viewers that understand the "VeNCrypt"
+RFB security type with the "X509Vnc" VeNCrypt sub-type.
+
+.IP \fBOTP\fR
+One-Time Password authentication with no encryption.
+
+This security type can be used with VNC viewers that understand the "VNC" RFB
+security type or the "Tight" RFB security type with the "VNC" authentication
+capability.
+
+.IP \fBTLSOtp\fR
+Anonymous TLS encryption with One-Time Password/Standard VNC authentication.
+
+This security type can be used with VNC viewers that understand the "VeNCrypt"
+RFB security type with the "TLSVnc" VeNCrypt sub-type.
+
+.IP \fBX509Otp\fR
+TLS encryption with a specified X.509 certificate and One-Time
+Password/Standard VNC authentication.
+
+This security type can be used with VNC viewers that understand the "VeNCrypt"
+RFB security type with the "X509Vnc" VeNCrypt sub-type.
+
+.IP \fBPlain\fR
+PAM User/Password / Plain authentication with no encryption.
+
+This security type can be used with VNC viewers that understand the "VeNCrypt"
+RFB security type and the "Plain" VeNCrypt sub-type.
+
+.IP \fBTLSPlain\fR
+Anonymous TLS encryption with PAM User/Password / Plain authentication.
+
+This security type can be used with VNC viewers that understand the "VeNCrypt"
+RFB security type with the "TLSPlain" VeNCrypt sub-type.
+
+.IP \fBX509Plain\fR
+TLS encryption with a specified X.509 certificate and PAM User/Password / Plain
+authentication.
+
+This security type can be used with VNC viewers that understand the "VeNCrypt"
+RFB security type with the "X509Plain" VeNCrypt sub-type.
+
+.IP \fBUnixLogin\fR
+PAM User/Password / Unix Login authentication with no encryption.
+
+This security type can be used with VNC viewers that understand the "Tight" RFB
+security type with the "Unix Login" authentication capability.
+.P
+
+The security type that will be selected when a VNC viewer connects depends on
+the following:
+.TP
+\fBXvnc command-line options\fR
+The \fB-securitytypes\fR argument allows you to request that specific security
+types be enabled in Xvnc.
+.TP
+\fBThe \fIpermitted-security-types\fB directive\fR
+If the security configuration file exists, then the system administrator
+can use the \fIpermitted-security-types\fR directive in that file to specify
+the security types that are allowed on the system.  A security type must both
+be requested, by way of the \fB-securitytypes\fR argument (or in the default
+security types that Xvnc uses if that argument is not specified), and permitted
+in order for the security type to be enabled.  If none of the security types
+meet this criteria, then Xvnc exits with an error.  For instance, if "TLSVnc"
+is the only permitted security type, then it is an error to start Xvnc with
+\fB-securitytypes X509Vnc\fR.
+
+The \fIpermitted-security-types\fR directive also allows you to specify the
+order in which authentication schemes are advertised to VNC viewers.  For
+instance, if "UnixLogin" is listed first, then the TurboVNC Viewer will
+default to using Unix Login authentication when connecting to any TurboVNC
+sessions on this host.  Similarly, if "VNC" or "OTP" is listed first, then the
+TurboVNC Viewer will default to using Standard VNC authentication.
+
+If the security configuration file does not exist or
+\fIpermitted-security-types\fR is not specified, then Xvnc behaves as if
+\fIpermitted-security-types\fR was set to "TLSVnc, TLSOtp, TLSPlain, TLSNone,
+X509Vnc, X509Otp, X509Plain, X509None, VNC, OTP, UnixLogin, Plain, None".
+.TP
+\fBThe negotiated RFB protocol version\fR
+This is determined by the VNC viewer's capabilities.  Older VNC viewers that
+support RFB version 3.3 can only use the "None", "VNC", or "OTP" security
+types.  Newer viewers that support RFB 3.7 or later with the Tight RFB security
+extension can use the "UnixLogin" security type, if the viewer has implemented
+it.  Viewers that support RFB 3.7 or later with the VeNCrypt RFB security
+extension can use the "TLS*", "X509*", and "Plain" security types, if the
+viewer has implemented them.
+
+Authentication will fail if a viewer that does not support or enable any of the
+TurboVNC Server's permitted security types attempts to connect.
+.TP
+\fBThe VNC viewer user interface\fR
+The VNC viewer's user interface may place additional restrictions on which
+security types can be used.  For example, the TurboVNC Viewer has
+command-line options that allow you to force the use of the VNC or Unix
+Login authentication schemes, regardless of which scheme the server advertises
+as the default.
+.P
+You can examine the Xvnc log file to see details of authentication
+processing, including the authentication methods, RFB protocol versions,
+and security types that have been enabled.
+.SH SECURITY CONFIGURATION FILE
+At startup, Xvnc reads security configuration information from
+\fB@CMAKE_INSTALL_FULL_SYSCONFDIR@/turbovncserver-security.conf\fR.  For
+security reasons, this pathname is hard-coded into the Xvnc executable and
+cannot be changed without rebuilding Xvnc.  If present, the security
+configuration file must be owned by either root or by the user who started the
+TurboVNC session, and the file may not be writable by others.
+
+Comment lines start with a hash (#) character.  Spaces and tabs are
+ignored on lines containing configuration directives.  The configuration
+directives are:
+
+.IP \fIenable-user-acl\fR
+If the "PAM User/Password" authentication method is used, then this directive
+enables an internal user access control list (ACL) in all TurboVNC sessions
+started on this host, to further limit which users will be permitted to attempt
+PAM authentication.  Users can be added to or removed from this list using the
+\fBvncpasswd\fR(1) utility.  The user who started the TurboVNC session will
+automatically be added to the session's access control list.
+
+.IP \fImax-desktop-size\fR=\fIwidth\fRx\fIheight\fR
+This specifies the maximum desktop size for all TurboVNC sessions started on
+this host.  If a user attempts to start a session with a larger geometry than
+this or to use remote desktop resizing to increase the desktop size to a size
+larger than this, the desktop size will be clamped to \fIwidth\fRx\fIheight\fR.
+
+.IP \fImax-idle-timeout\fR=\fItime\fR
+This specifies the maximum idle timeout (in seconds) for all TurboVNC sessions
+started on this host.  The idle timeout is the amount of time that a TurboVNC
+session can remain idle (with no VNC viewer connections) before Xvnc
+automatically exits.  If this value is set to a number greater than 0, then all
+TurboVNC sessions on this host will use this idle timeout value by default, and
+the user will only be allowed to override it with a lower value.
+
+.IP \fIno-clipboard-recv\fR
+This prevents any TurboVNC sessions started on this host from receiving
+clipboard changes from their connected viewers.
+
+.IP \fIno-clipboard-send\fR
+This prevents any TurboVNC sessions started on this host from sending clipboard
+changes to their connected viewers.
+
+.IP \fIno-httpd\fR
+Disable the built-in HTTP server in all TurboVNC sessions started on this host.
+
+.IP \fIno-pam-sessions\fR
+Do not allow PAM sessions to be created for any TurboVNC sessions started on
+this host.
+
+.IP \fIno-remote-connections\fR
+Do not allow inbound remote connections to be made to any TurboVNC session
+started on this host.  Only connections from localhost can be made, which
+effectively forces the use of SSH tunneling to make inbound remote connections.
+
+.IP \fIno-remote-resize\fR
+Do not allow remote desktop resizing with any TurboVNC session started on this
+host.
+
+.IP \fIno-reverse-connections\fR
+Do not allow reverse connections to be made from any TurboVNC session started
+on this host.  This causes Xvnc to ignore requests from the \fBvncconnect\fR(1)
+utility.
+
+.IP \fIno-x11-tcp-connections\fR
+Do not allow X11 TCP connections to any TurboVNC session started on this host.
+
+.IP \fIpam-service-name\fR=\fIsvcname\fR
+Sets the service name to be used when Xvnc performs PAM authentication.  The
+default service name is \fIturbovnc\fR.  This typically corresponds to a file
+in \fB/etc/pam.d\fR or to a token in \fB/etc/pam.conf\fR.  For instance, if
+your system has a file named \fB/etc/pam.d/passwd\fR, then copying this file to
+\fB/etc/pam.d/{svcname}\fR would cause the username and password sent by the
+VNC viewer to be validated against \fB/etc/passwd\fR.
+
+.IP \fIpermitted-cipher-suites\fR=\fIsuite\fR[:\fIsuite\fR[...]]
+Defines the set of permitted TLS cipher suites for the TLS* and X509* security
+types.  Multiple colon-separated cipher suites may be specified.  (Run
+\fBopenssl ciphers aNULL\fR for a list of available cipher suites for the TLS*
+security types, and \fBopenssl ciphers\fR for a list of available cipher suites
+for the X509* security types.)  The order in which these cipher suites are
+specified defines the order in which Xvnc will advertise the cipher suites to
+the VNC viewer.  This directive is ignored if the TurboVNC Server was built
+with GnuTLS rather than OpenSSL.
+
+.IP \fIpermitted-security-types\fR=\fItype\fR[,\fItype\fR[...]]
+Defines the initial set of permitted security types.  Multiple comma-separated
+types may be specified.  Accepted values for \fItype\fR are:
+\fITLSVnc\fR, \fITLSOtp\fR, \fITLSPlain\fR, \fITLSNone\fR, \fIX509Vnc\fR,
+\fIX509Otp\fR, \fIX509Plain\fR, \fIX509None\fR, \fIVNC\fR, \fIOTP\fR,
+\fIUnixLogin\fR, \fIPlain\fR, and \fINone\fR.  Security types are
+case-insensitive.  The order in which these types are specified defines the
+order in which Xvnc will advertise the corresponding RFB security types and
+authentication schemes to the VNC viewer.  This ordering may affect which
+security type the VNC viewer chooses as its default.
+
+.IP \fItls-key-length\fR
+This specifies the length of the key, in bits, that the TurboVNC Server will
+generate for any of the TLS* (anonymous TLS) security types.
+
+.SH SECURITY CONCERNS
+.P
+Even when used with encryption, there are other security problems inherent in
+the design of VNC.  Thus, it is recommended that you restrict network access to
+TurboVNC sessions from untrusted network addresses.  Probably the best way to
+secure a TurboVNC session is to allow only loopback connections from the host
+(using the \fB\-localhost\fR option or the \fIno-remote-connections\fR security
+configuration file directive) and to use SSH tunneling for remote access
+to the TurboVNC session.  For details on using TurboVNC with SSH tunneling, see
+the TurboVNC User's Guide.
+.P
+It is incumbent upon the system administrator to ensure that a security type
+meets the security requirements for a particular site before it is permitted to
+be used.  In particular, caution should be exercised when using security types
+that support the Unix Login and Plain authentication schemes.  Unless SSH
+tunneling or another suitable encryption mechanism is enforced, then the use of
+these authentication schemes will result in Unix passwords being sent
+unencrypted over the network.
+.SH SEE ALSO
+\fBvncserver\fR(1), \fBvncviewer\fR(1), \fBvncpasswd\fR(1),
+\fBvncconnect\fR(1), \fBsshd\fR(1)
+.SH AUTHORS
+VNC was originally developed at AT&T Laboratories Cambridge.  TightVNC
+additions were implemented by Constantin Kaplinsky.  TurboVNC, based originally
+on TightVNC, is provided by The VirtualGL Project.  Many other people
+participated in development, testing and support.
+
+\fBMan page authors:\fR
+.br
+Marcus Brinkmann <Marcus.Brinkmann@ruhr-uni-bochum.de>
+.br
+Tim Waugh <twaugh@redhat.com>
+.br
+Constantin Kaplinsky <const@tightvnc.com>
+.br
+D. R. Commander <information@turbovnc.org>
+.br
+Craig Ruff <cruff@ucar.edu>

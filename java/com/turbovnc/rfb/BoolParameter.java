@@ -1,5 +1,5 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
- * Copyright (C) 2012 D. R. Commander.  All Rights Reserved.
+ * Copyright (C) 2012, 2017-2018 D. R. Commander.  All Rights Reserved.
  *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -30,29 +30,31 @@ public class BoolParameter extends VoidParameter {
     return setParam(v, false);
   }
 
-  public boolean setParam(String v, boolean reverse) {
+  public synchronized boolean setParam(String v, boolean reverse_) {
     if (v.equals("1") || v.equalsIgnoreCase("on") ||
         v.equalsIgnoreCase("true") || v.equalsIgnoreCase("yes"))
-      value = reverse ? false : true;
+      value = reverse_ ? false : true;
     else if (v.equals("0") || v.equalsIgnoreCase("off") ||
-        v.equalsIgnoreCase("false") || v.equalsIgnoreCase("no"))
-      value = reverse ? true : false;
+             v.equalsIgnoreCase("false") || v.equalsIgnoreCase("no"))
+      value = reverse_ ? true : false;
     else
       return false;
     return true;
   }
 
-  public boolean setParam() { setParam(true); return true; }
-  public void setParam(boolean b) { value = b; }
+  public boolean setParam() { setParam(true);  return true; }
+  public synchronized void setParam(boolean b) { value = b; }
 
   public String getDefaultStr() { return defValue ? "1" : "0"; }
-  public String getValueStr() { return value ? "1" : "0"; }
+  public synchronized String getValueStr() { return value ? "1" : "0"; }
   public String getValues() { return "0, 1"; }
   public boolean isBool() { return true; }
 
-  public final boolean getValue() { return value; }
+  public final synchronized boolean getValue() { return value; }
 
+  @SuppressWarnings("checkstyle:VisibilityModifier")
   public boolean reverse;
+
   protected boolean value;
-  protected boolean defValue;
+  protected final boolean defValue;
 }

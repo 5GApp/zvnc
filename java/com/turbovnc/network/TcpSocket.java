@@ -1,6 +1,6 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
  * Copyright (C) 2012 Brian P. Hinz
- * Copyright (C) 2012 D. R. Commander.  All Rights Reserved.
+ * Copyright (C) 2012, 2018, 2020 D. R. Commander.  All Rights Reserved.
  *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -35,7 +35,8 @@ import java.nio.channels.*;
 public class TcpSocket extends Socket {
 
   // -=- Socket initialisation
-  public static boolean socketsInitialised = false;
+  static boolean socketsInitialised = false;
+
   public static void initSockets() {
     if (socketsInitialised)
       return;
@@ -44,17 +45,11 @@ public class TcpSocket extends Socket {
 
   // -=- TcpSocket
 
-  public TcpSocket(SocketDescriptor sock, boolean close) {
-    super(new FdInStream(sock), new FdOutStream(sock), true);
-    closeFd = close;
-  }
-
   public TcpSocket(SocketDescriptor sock) {
-    this(sock, true);
+    super(new FdInStream(sock), new FdOutStream(sock), true);
   }
 
   public TcpSocket(String host, int port) {
-    closeFd = true;
     SocketDescriptor sock = null;
     InetAddress addr = null;
     boolean result = false;
@@ -91,13 +86,9 @@ public class TcpSocket extends Socket {
     ownStreams = true;
   }
 
-  protected void finalize() {
-    if (closeFd)
-      ((SocketDescriptor)getFd()).close();
-  }
-
   public int getMyPort() {
-    SocketAddress address = ((SocketDescriptor)getFd()).socket().getLocalSocketAddress();
+    SocketAddress address =
+      ((SocketDescriptor)getFd()).socket().getLocalSocketAddress();
     return ((InetSocketAddress)address).getPort();
   }
 
@@ -161,7 +152,9 @@ public class TcpSocket extends Socket {
   }
 
   public int getSockPort() {
-    return ((InetSocketAddress)((SocketDescriptor)getFd()).socket().getRemoteSocketAddress()).getPort();
+    SocketAddress address =
+      ((SocketDescriptor)getFd()).socket().getRemoteSocketAddress();
+    return ((InetSocketAddress)address).getPort();
   }
 
   /* Tunnelling support. */
@@ -173,14 +166,10 @@ public class TcpSocket extends Socket {
       port = sock.getLocalPort();
       sock.close();
     } catch (java.io.IOException e) {
-      throw new SystemException(e.toString());
+      throw new SystemException(e);
     }
     return port;
   }
 
-  private boolean closeFd;
   static LogWriter vlog = new LogWriter("TcpSocket");
-
 }
-
-

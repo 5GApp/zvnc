@@ -1,3 +1,0 @@
-/* dummy */
-
-#define PACKAGE "pixman"

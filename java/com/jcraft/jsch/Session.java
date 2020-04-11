@@ -1,6 +1,7 @@
 /* -*-mode:java; c-basic-offset:2; indent-tabs-mode:nil -*- */
 /*
-Copyright (c) 2002-2014 ymnk, JCraft,Inc. All rights reserved.
+Copyright (c) 2002-2016 ymnk, JCraft,Inc. All rights reserved.
+Copyright (c) 2018, D. R. Commander. All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -123,7 +124,7 @@ public class Session implements Runnable{
   SocketFactory socket_factory=null;
 
   static final int buffer_margin = 32 + // maximum padding length
-                                   20 + // maximum mac length
+                                   64 + // maximum mac length
                                    32;  // margin for deflater; deflater may inflate data
 
   private java.util.Hashtable config=null;
@@ -192,7 +193,7 @@ public class Session implements Runnable{
     if(random==null){
       try{
 	Class c=Class.forName(getConfig("random"));
-        random=(Random)(c.newInstance());
+        random=(Random)(c.getDeclaredConstructor().newInstance());
       }
       catch(Exception e){ 
         throw new JSchException(e.toString(), e);
@@ -339,9 +340,16 @@ public class Session implements Runnable{
 	}
       }
 
-      try{ checkHost(host, port, kex); }
+      try{
+        long tmp=System.currentTimeMillis();
+        in_prompt = true;
+        checkHost(host, port, kex);
+        in_prompt = false;
+        kex_start_time+=(System.currentTimeMillis()-tmp);
+      }
       catch(JSchException ee){
         in_kex=false;
+        in_prompt = false;
         throw ee;
       }
 
@@ -380,7 +388,7 @@ public class Session implements Runnable{
       UserAuth ua=null;
       try{
 	Class c=Class.forName(getConfig("userauth.none"));
-        ua=(UserAuth)(c.newInstance());
+        ua=(UserAuth)(c.getDeclaredConstructor().newInstance());
       }
       catch(Exception e){ 
         throw new JSchException(e.toString(), e);
@@ -447,7 +455,7 @@ public class Session implements Runnable{
             Class c=null;
             if(getConfig("userauth."+method)!=null){
               c=Class.forName(getConfig("userauth."+method));
-              ua=(UserAuth)(c.newInstance());
+              ua=(UserAuth)(c.getDeclaredConstructor().newInstance());
             }
           }
           catch(Exception e){
@@ -592,7 +600,7 @@ public class Session implements Runnable{
     KeyExchange kex=null;
     try{
       Class c=Class.forName(getConfig(guess[KeyExchange.PROPOSAL_KEX_ALGS]));
-      kex=(KeyExchange)(c.newInstance());
+      kex=(KeyExchange)(c.getDeclaredConstructor().newInstance());
     }
     catch(Exception e){ 
       throw new JSchException(e.toString(), e);
@@ -602,7 +610,8 @@ public class Session implements Runnable{
     return kex;
   }
 
-  private boolean in_kex=false;
+  private volatile boolean in_kex=false;
+  private volatile boolean in_prompt=false;
   public void rekey() throws Exception {
     send_kexinit();
   }
@@ -631,6 +640,16 @@ public class Session implements Runnable{
       }
     }
 
+    String server_host_key = getConfig("server_host_key");
+    String[] not_available_shks =
+      checkSignatures(getConfig("CheckSignatures"));
+    if(not_available_shks!=null && not_available_shks.length>0){
+      server_host_key=Util.diffString(server_host_key, not_available_shks);
+      if(server_host_key==null){
+        throw new JSchException("There are not any available sig algorithm.");
+      }
+    }
+
     in_kex=true;
     kex_start_time=System.currentTimeMillis();
 
@@ -654,7 +673,7 @@ public class Session implements Runnable{
       random.fill(buf.buffer, buf.index, 16); buf.skip(16);
     }
     buf.putString(Util.str2byte(kex));
-    buf.putString(Util.str2byte(getConfig("server_host_key")));
+    buf.putString(Util.str2byte(server_host_key));
     buf.putString(Util.str2byte(cipherc2s));
     buf.putString(Util.str2byte(ciphers2c));
     buf.putString(Util.str2byte(getConfig("mac.c2s")));
@@ -739,7 +758,7 @@ public class Session implements Runnable{
 "IT IS POSSIBLE THAT SOMEONE IS DOING SOMETHING NASTY!\n"+
 "Someone could be eavesdropping on you right now (man-in-the-middle attack)!\n"+
 "It is also possible that the "+key_type+" host key has just been changed.\n"+
-"The fingerprint for the "+key_type+" key sent by the remote host is\n"+
+"The fingerprint for the "+key_type+" key sent by the remote host "+chost+" is\n"+
 key_fprint+".\n"+
 "Please contact your system administrator.\n"+
 "Add correct host key in "+file+" to get rid of this message.";
@@ -759,7 +778,7 @@ key_fprint+".\n"+
 
       synchronized(hkr){
         hkr.remove(chost, 
-                   (key_type.equals("DSA") ? "ssh-dss" : "ssh-rsa"), 
+                   kex.getKeyAlgorithName(),
                    null);
         insert=true;
       }
@@ -797,8 +816,7 @@ key_type+" key fingerprint is "+key_fprint+".\n"+
 
     if(i==HostKeyRepository.OK){
       HostKey[] keys =
-        hkr.getHostKey(chost,
-                       (key_type.equals("DSA") ? "ssh-dss" : "ssh-rsa"));
+        hkr.getHostKey(chost, kex.getKeyAlgorithName());
       String _key= Util.byte2str(Util.toBase64(K_S, 0, K_S.length));
       for(int j=0; j< keys.length; j++){
         if(keys[i].getKey().equals(_key) &&
@@ -821,7 +839,7 @@ key_type+" key fingerprint is "+key_fprint+".\n"+
     if(i==HostKeyRepository.OK &&
        JSch.getLogger().isEnabled(Logger.INFO)){
       JSch.getLogger().log(Logger.INFO, 
-                           "Host '"+host+"' is known and mathces the "+key_type+" host key");
+                           "Host '"+host+"' is known and matches the "+key_type+" host key");
     }
 
     if(insert &&
@@ -1136,7 +1154,7 @@ key_type+" key fingerprint is "+key_fprint+".\n"+
   
       method=guess[KeyExchange.PROPOSAL_ENC_ALGS_STOC];
       c=Class.forName(getConfig(method));
-      s2ccipher=(Cipher)(c.newInstance());
+      s2ccipher=(Cipher)(c.getDeclaredConstructor().newInstance());
       while(s2ccipher.getBlockSize()>Es2c.length){
         buf.reset();
         buf.putMPInt(K);
@@ -1154,7 +1172,7 @@ key_type+" key fingerprint is "+key_fprint+".\n"+
 
       method=guess[KeyExchange.PROPOSAL_MAC_ALGS_STOC];
       c=Class.forName(getConfig(method));
-      s2cmac=(MAC)(c.newInstance());
+      s2cmac=(MAC)(c.getDeclaredConstructor().newInstance());
       MACs2c = expandKey(buf, K, H, MACs2c, hash, s2cmac.getBlockSize());
       s2cmac.init(MACs2c);
       //mac_buf=new byte[s2cmac.getBlockSize()];
@@ -1163,7 +1181,7 @@ key_type+" key fingerprint is "+key_fprint+".\n"+
 
       method=guess[KeyExchange.PROPOSAL_ENC_ALGS_CTOS];
       c=Class.forName(getConfig(method));
-      c2scipher=(Cipher)(c.newInstance());
+      c2scipher=(Cipher)(c.getDeclaredConstructor().newInstance());
       while(c2scipher.getBlockSize()>Ec2s.length){
         buf.reset();
         buf.putMPInt(K);
@@ -1181,7 +1199,7 @@ key_type+" key fingerprint is "+key_fprint+".\n"+
 
       method=guess[KeyExchange.PROPOSAL_MAC_ALGS_CTOS];
       c=Class.forName(getConfig(method));
-      c2smac=(MAC)(c.newInstance());
+      c2smac=(MAC)(c.getDeclaredConstructor().newInstance());
       MACc2s = expandKey(buf, K, H, MACc2s, hash, c2smac.getBlockSize());
       c2smac.init(MACc2s);
 
@@ -1238,7 +1256,7 @@ key_type+" key fingerprint is "+key_fprint+".\n"+
     while(true){
       if(in_kex){
         if(t>0L && (System.currentTimeMillis()-kex_start_time)>t){
-          throw new JSchException("timeout in wating for rekeying process.");
+          throw new JSchException("timeout in waiting for rekeying process.");
         }
         try{Thread.sleep(10);}
         catch(java.lang.InterruptedException e){};
@@ -1256,6 +1274,10 @@ key_type+" key fingerprint is "+key_fprint+".\n"+
           finally{
             c.notifyme--;
           }
+        }
+
+        if(in_kex){
+          continue;
         }
 
         if(c.rwsize>=length){
@@ -1326,8 +1348,11 @@ key_type+" key fingerprint is "+key_fprint+".\n"+
     // System.err.println("in_kex="+in_kex+" "+(packet.buffer.getCommand()));
     long t = getTimeout();
     while(in_kex){
-      if(t>0L && (System.currentTimeMillis()-kex_start_time)>t){
-        throw new JSchException("timeout in wating for rekeying process.");
+      if(t>0L &&
+         (System.currentTimeMillis()-kex_start_time)>t &&
+         !in_prompt
+         ){
+        throw new JSchException("timeout in waiting for rekeying process.");
       }
       byte command=packet.buffer.getCommand();
       //System.err.println("command: "+command);
@@ -2207,7 +2232,7 @@ break;
          (isAuthed && method.equals("zlib@openssh.com"))){
         try{
           Class c=Class.forName(foo);
-          deflater=(Compression)(c.newInstance());
+          deflater=(Compression)(c.getDeclaredConstructor().newInstance());
           int level=6;
           try{ level=Integer.parseInt(getConfig("compression_level"));}
           catch(Exception ee){ }
@@ -2234,7 +2259,7 @@ break;
          (isAuthed && method.equals("zlib@openssh.com"))){
         try{
           Class c=Class.forName(foo);
-          inflater=(Compression)(c.newInstance());
+          inflater=(Compression)(c.getDeclaredConstructor().newInstance());
           inflater.init(Compression.INFLATER, 0);
         }
         catch(Exception ee){
@@ -2469,7 +2494,7 @@ break;
   static boolean checkCipher(String cipher){
     try{
       Class c=Class.forName(cipher);
-      Cipher _c=(Cipher)(c.newInstance());
+      Cipher _c=(Cipher)(c.getDeclaredConstructor().newInstance());
       _c.init(Cipher.ENCRYPT_MODE,
               new byte[_c.getBlockSize()],
               new byte[_c.getIVSize()]);
@@ -2514,11 +2539,46 @@ break;
   static boolean checkKex(Session s, String kex){
     try{
       Class c=Class.forName(kex);
-      KeyExchange _c=(KeyExchange)(c.newInstance());
+      KeyExchange _c=(KeyExchange)(c.getDeclaredConstructor().newInstance());
       _c.init(s ,null, null, null, null);
       return true;
     }
     catch(Exception e){ return false; }
+  }
+
+  private String[] checkSignatures(String sigs){
+    if(sigs==null || sigs.length()==0)
+      return null;
+
+    if(JSch.getLogger().isEnabled(Logger.INFO)){
+      JSch.getLogger().log(Logger.INFO, 
+                           "CheckSignatures: "+sigs);
+    }
+
+    java.util.Vector result=new java.util.Vector();
+    String[] _sigs=Util.split(sigs, ",");
+    for(int i=0; i<_sigs.length; i++){
+      try{      
+        Class c=Class.forName((String)JSch.getConfig(_sigs[i]));
+        final Signature sig=
+          (Signature)(c.getDeclaredConstructor().newInstance());
+        sig.init();
+      }
+      catch(Exception e){
+        result.addElement(_sigs[i]);
+      }
+   }
+   if(result.size()==0)
+      return null;
+   String[] foo=new String[result.size()];
+    System.arraycopy(result.toArray(), 0, foo, 0, result.size());
+    if(JSch.getLogger().isEnabled(Logger.INFO)){
+      for(int i=0; i<foo.length; i++){
+        JSch.getLogger().log(Logger.INFO, 
+                             foo[i]+" is not available.");
+      }
+    }
+    return foo;
   }
 
   /**

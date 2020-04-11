@@ -2,11 +2,11 @@
 {anchor: Compatibility}
 
 In order to realize the full performance benefits of TurboVNC, it is necessary
-to use a TurboVNC server and a TurboVNC viewer in concert.  However, TurboVNC
-is fully compatible with [[http://www.tigervnc.com][TigerVNC]], TightVNC,
-RealVNC, and other VNC flavors.  You can use the TurboVNC Viewer to connect to
-a non-TurboVNC server (or vice versa), although this will generally result in
-some decrease in performance.
+to use the TurboVNC Server and the TurboVNC Viewer in concert.  However,
+TurboVNC is fully compatible with [[http://www.tigervnc.com][TigerVNC]],
+TightVNC, RealVNC, and other VNC flavors.  You can use the TurboVNC Viewer to
+connect to a non-TurboVNC server (or vice versa), although this will generally
+result in some decrease in performance.
 
 The following sections list additional things to bear in mind when mixing
 TurboVNC with other VNC flavors.
@@ -100,7 +100,7 @@ TurboVNC with other VNC flavors.
 		the framebuffer updates with no zlib compression, and the TightVNC and
 		TigerVNC viewers don't support this.
 		{nl}{nl}
-		A similar issue occurs when using more than four encoding threads on the
+		A similar issue occurs when using more than four encoding threads in the
 		server.  Since the Tight encoding type is limited to four zlib streams,
 		any encoding threads beyond the first four cannot use zlib compression.
 		{nl}{nl}
@@ -112,12 +112,12 @@ TurboVNC with other VNC flavors.
 ** RealVNC
 
 The TurboVNC Viewer supports the Hextile and Raw encoding types, which are
-compatible with RealVNC.  The Java TurboVNC Viewer additionally supports ZRLE
-and RRE.  None of these encoding types can be selected from the TurboVNC Viewer
-GUI, but Hextile or ZRLE will be selected automatically when connecting to a
-RealVNC server.  Non-Tight encoding types, such as Hextile and Raw, can also be
+compatible with RealVNC.  The Java TurboVNC Viewer additionally supports ZRLE.
+None of these encoding types can be selected from the TurboVNC Viewer GUI, but
+Hextile or ZRLE will be selected automatically when connecting to a RealVNC
+server.  Non-Tight encoding types, such as Hextile and Raw, can also be
 manually selected from the TurboVNC Viewer command line.  In addition to
-Hextile, Raw, ZRLE, and RRE, the TurboVNC Server also supports the CoRRE and
+Hextile, Raw, and ZRLE, the TurboVNC Server also supports the RRE, CoRRE, and
 Zlib legacy encoding types, for compatibility with older VNC viewers.
 
 All of the non-Tight encoding types have performance drawbacks.  Raw encoding
@@ -128,6 +128,6 @@ convert the pixels from bytes to ints in Java.)  Hextile uses very small tiles,
 which causes it to incur a large amount of computational overhead.  It
 compresses too poorly to perform well on slow links but uses too much CPU time
 to perform well on fast links.  ZRLE improves upon this, but it is still too
-computationally intense for fast networks.  The ''vncviewer'' man page
-in the TurboVNC Linux packages has some additional information about how
-Hextile, RRE, and ZRLE work.
+computationally intense for fast networks.  The ''vncviewer'' man page in the
+TurboVNC Linux packages has some additional information about how Hextile and
+ZRLE work.

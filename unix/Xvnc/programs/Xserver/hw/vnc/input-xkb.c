@@ -1,7 +1,7 @@
 /* Copyright (C) 2009 TightVNC Team
  * Copyright (C) 2009 Red Hat, Inc.
  * Copyright 2013 Pierre Ossman for Cendio AB
- * Copyright (C) 2014-2015 D. R. Commander
+ * Copyright (C) 2014-2015, 2017 D. R. Commander
  *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -61,6 +61,7 @@ from The Open Group.
 #include "scrnintstr.h"
 #include "mi.h"
 #include "input-xkb.h"
+#include "rfb.h"
 
 
 extern DeviceIntPtr kbdDevice;
@@ -70,8 +71,7 @@ extern DeviceIntPtr kbdDevice;
 
 static Bool XkbTranslateKeyCode(register XkbDescPtr xkb, KeyCode key,
                                 register unsigned int mods,
-                                unsigned int *mods_rtrn,
-                                KeySym *keysym_rtrn)
+                                unsigned int *mods_rtrn, KeySym *keysym_rtrn)
 {
   XkbKeyTypeRec *type;
   int col, nKeyGroups;
@@ -113,7 +113,7 @@ static Bool XkbTranslateKeyCode(register XkbDescPtr xkb, KeyCode key,
   type = XkbKeyKeyType(xkb, key, effectiveGroup);
 
   preserve = 0;
-  if (type->map) { /* find the column (shift level) within the group */
+  if (type->map) {  /* find the column (shift level) within the group */
     register int i;
     register XkbKTMapEntryPtr entry;
     for (i = 0, entry = type->map; i < type->map_count; i++, entry++) {
@@ -131,7 +131,7 @@ static Bool XkbTranslateKeyCode(register XkbDescPtr xkb, KeyCode key,
   if (mods_rtrn)
     *mods_rtrn = type->mods.mask & (~preserve);
 
-  return (syms[col] != NoSymbol);
+  return syms[col] != NoSymbol;
 }
 
 
@@ -158,23 +158,23 @@ static XkbAction *XkbKeyActionPtr(XkbDescPtr xkb, KeyCode key,
   if (effectiveGroup >= nKeyGroups) {
     unsigned groupInfo = XkbKeyGroupInfo(xkb, key);
     switch (XkbOutOfRangeGroupAction(groupInfo)) {
-    default:
-      effectiveGroup %= nKeyGroups;
-      break;
-    case XkbClampIntoRange:
-      effectiveGroup = nKeyGroups - 1;
-      break;
-    case XkbRedirectIntoRange:
-      effectiveGroup = XkbOutOfRangeGroupNumber(groupInfo);
-      if (effectiveGroup >= nKeyGroups)
-        effectiveGroup = 0;
-      break;
+      default:
+        effectiveGroup %= nKeyGroups;
+        break;
+      case XkbClampIntoRange:
+        effectiveGroup = nKeyGroups - 1;
+        break;
+      case XkbRedirectIntoRange:
+        effectiveGroup = XkbOutOfRangeGroupNumber(groupInfo);
+        if (effectiveGroup >= nKeyGroups)
+          effectiveGroup = 0;
+        break;
     }
   }
   col = effectiveGroup * XkbKeyGroupsWidth(xkb, key);
   type = XkbKeyKeyType(xkb, key, effectiveGroup);
 
-  if (type->map) { /* find the column (shift level) within the group */
+  if (type->map) {  /* find the column (shift level) within the group */
     register int i;
     register XkbKTMapEntryPtr entry;
     for (i = 0, entry = type->map; i < type->map_count; i++, entry++) {
@@ -203,17 +203,17 @@ static unsigned XkbKeyEffectiveGroup(XkbDescPtr xkb, KeyCode key,
   if (effectiveGroup >= nKeyGroups) {
     unsigned groupInfo = XkbKeyGroupInfo(xkb, key);
     switch (XkbOutOfRangeGroupAction(groupInfo)) {
-    default:
-      effectiveGroup %= nKeyGroups;
-      break;
-    case XkbClampIntoRange:
-      effectiveGroup = nKeyGroups - 1;
-      break;
-    case XkbRedirectIntoRange:
-      effectiveGroup = XkbOutOfRangeGroupNumber(groupInfo);
-      if (effectiveGroup >= nKeyGroups)
-        effectiveGroup = 0;
-      break;
+      default:
+        effectiveGroup %= nKeyGroups;
+        break;
+      case XkbClampIntoRange:
+        effectiveGroup = nKeyGroups - 1;
+        break;
+      case XkbRedirectIntoRange:
+        effectiveGroup = XkbOutOfRangeGroupNumber(groupInfo);
+        if (effectiveGroup >= nKeyGroups)
+          effectiveGroup = 0;
+        break;
     }
   }
 
@@ -338,8 +338,7 @@ KeyCode *ReleaseShift(void)
       continue;
 
     nKeys++;
-    keys = (KeyCode *)realloc(keys, sizeof(KeyCode) * (nKeys + 1));
-    if (!keys) return NULL;
+    keys = (KeyCode *)rfbRealloc(keys, sizeof(KeyCode) * (nKeys + 1));
     keys[nKeys - 1] = key;
     keys[nKeys] = 0;
   }
@@ -426,8 +425,7 @@ KeyCode *ReleaseLevelThree(void)
       continue;
 
     nKeys++;
-    keys = (KeyCode *)realloc(keys, sizeof(KeyCode) * (nKeys + 1));
-    if (!keys) return NULL;
+    keys = (KeyCode *)rfbRealloc(keys, sizeof(KeyCode) * (nKeys + 1));
     keys[nKeys - 1] = key;
     keys[nKeys] = 0;
   }
@@ -472,8 +470,7 @@ KeyCode KeysymToKeycode(KeySym keysym, unsigned state, unsigned *new_state)
   if (new_state == NULL)
     return 0;
 
-  *new_state = (state & ~ShiftMask) |
-               ((state & ShiftMask) ? 0 : ShiftMask);
+  *new_state = (state & ~ShiftMask) | ((state & ShiftMask) ? 0 : ShiftMask);
   key = KeysymToKeycode(keysym, *new_state, NULL);
   if (key != 0)
     return key;
@@ -624,7 +621,7 @@ KeyCode AddKeysym(KeySym keysym, unsigned state)
 
   XkbChangeTypesOfKey(xkb, key, 1, XkbGroup1Mask, types, &changes.map);
 
-  syms = XkbKeySymsPtr(xkb,key);
+  syms = XkbKeySymsPtr(xkb, key);
   if (upper == lower)
     syms[0] = keysym;
   else {
@@ -642,8 +639,7 @@ KeyCode AddKeysym(KeySym keysym, unsigned state)
 }
 
 
-void vncXkbProcessDeviceEvent(int screenNum,
-                              InternalEvent *event,
+void vncXkbProcessDeviceEvent(int screenNum, InternalEvent *event,
                               DeviceIntPtr dev)
 {
   unsigned int backupctrls = 0;

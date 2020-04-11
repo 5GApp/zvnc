@@ -1,5 +1,5 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
- * Copyright (C) 2015 D. R. Commander.  All Rights Reserved.
+ * Copyright (C) 2015, 2018 D. R. Commander.  All Rights Reserved.
  *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -30,8 +30,8 @@ public class LogWriter {
 
   public void setLevel(int level_) { level = level_; }
 
-  public void write(int level, String str) {
-    if (level <= this.level) {
+  public void write(int level_, String str) {
+    if (level_ <= level) {
       System.err.println(name + ": " + str);
     }
   }
@@ -40,49 +40,22 @@ public class LogWriter {
   public void status(String str) { write(10, str); }
   public void info(String str) { write(30, str); }
   public void debug(String str) { write(100, str); }
+  public void sshdebug(String str) { write(110, str); }
   public void eidebug(String str) { write(150, str); }
 
   public static boolean setLogParams(String params) {
-    globalLogLevel = Integer.parseInt(params);
+    try {
+      globalLogLevel = Integer.parseInt(params);
+    } catch (NumberFormatException e) {
+      return false;
+    }
     LogWriter current = logWriters;
     while (current != null) {
       current.setLevel(globalLogLevel);
       current = current.next;
     }
     return true;
-//      int colon = params.indexOf(':');
-//      String logwriter_name = params.substring(0, colon);
-//      params = params.substring(colon + 1);
-//      colon = params.indexOf(':');
-//      String logger_name = params.substring(0, colon);
-//      params = params.substring(colon + 1);
-//      int level = Integer.parseInt(params);
-//      // XXX ignore logger name for the moment
-
-//      System.err.println("setting level to " + level);
-//      System.err.println("logwriters is " + logWriters);
-//      if (logwriter_name.equals("*")) {
-//        LogWriter current = logWriters;
-//        while (current != null) {
-//          //current.setLog(logger);
-//          System.err.println("setting level of " + current.name + "  to " + level);
-//          current.setLevel(level);
-//          current = current.next;
-//        }
-//        return true;
-//      }
-
-//      LogWriter logwriter = getLogWriter(logwriter_name);
-//      if (logwriter == null) {
-//        System.err.println("no logwriter found: " + logwriter_name);
-//        return false;
-//      }
-
-//      //logwriter.setLog(logger);
-//      logwriter.setLevel(level);
-//      return true;
   }
-
 
   static LogWriter getLogWriter(String name) {
     LogWriter current = logWriters;

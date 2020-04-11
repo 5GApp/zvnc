@@ -1,4 +1,4 @@
-/*  Copyright (C)2015-2016 D. R. Commander.  All Rights Reserved.
+/*  Copyright (C)2015-2017 D. R. Commander.  All Rights Reserved.
  *
  *  This is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -24,13 +24,13 @@
 
 BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpReserved)
 {
-  switch(fdwReason) {
-  case DLL_PROCESS_ATTACH:
-    LowLevelHook::Initialize(hinstDLL);
-    break;
-  case DLL_PROCESS_DETACH:
-    LowLevelHook::Release();
-    break;
+  switch (fdwReason) {
+    case DLL_PROCESS_ATTACH:
+      LowLevelHook::Initialize(hinstDLL);
+      break;
+    case DLL_PROCESS_DETACH:
+      LowLevelHook::Release();
+      break;
   }
   return TRUE;
 }
@@ -54,7 +54,7 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpReserved)
 }
 
 
-typedef jboolean (JNICALL *__JAWT_GetAWT_type)(JNIEnv* env, JAWT* awt);
+typedef jboolean (JNICALL *__JAWT_GetAWT_type)(JNIEnv *env, JAWT *awt);
 static __JAWT_GetAWT_type __JAWT_GetAWT = NULL;
 
 static HMODULE handle = NULL;
@@ -74,7 +74,11 @@ JNIEXPORT void JNICALL Java_com_turbovnc_vncviewer_Viewport_grabKeyboard
       if ((handle = LoadLibrary("jawt")) == NULL)
         _throww32();
       if ((__JAWT_GetAWT =
+#ifdef _WIN64
            (__JAWT_GetAWT_type)GetProcAddress(handle, "JAWT_GetAWT")) == NULL)
+#else
+           (__JAWT_GetAWT_type)GetProcAddress(handle, "_JAWT_GetAWT@8")) == NULL)
+#endif
         _throww32();
     }
 
@@ -90,7 +94,7 @@ JNIEXPORT void JNICALL Java_com_turbovnc_vncviewer_Viewport_grabKeyboard
     if ((dsi = ds->GetDrawingSurfaceInfo(ds)) == NULL)
       _throw("Could not get drawing surface info");
 
-    if ((w32dsi = (JAWT_Win32DrawingSurfaceInfo*)dsi->platformInfo) == NULL)
+    if ((w32dsi = (JAWT_Win32DrawingSurfaceInfo *)dsi->platformInfo) == NULL)
       _throw("Could not get Win32 drawing surface info");
 
     LowLevelHook::Activate(w32dsi->hwnd);

@@ -1,4 +1,4 @@
-//  Copyright (C) 2010, 2012, 2015-2016 D. R. Commander. All Rights Reserved.
+//  Copyright (C) 2010, 2012, 2015-2017 D. R. Commander. All Rights Reserved.
 //  Copyright 2005 Alexandre Julliard
 //  Copyright (C) 1999 AT&T Laboratories Cambridge. All Rights Reserved.
 //
@@ -37,6 +37,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
                    PSTR szCmdLine, int iCmdShow)
 {
   int retval = 0;
+
+  srand((unsigned int)time(NULL));
 
   // The state of the application as a whole is contained in the one app object
   VNCviewerApp32 app(hInstance, szCmdLine);
@@ -100,15 +102,15 @@ int main(int argc, char **argv)
     else if (*cmdline == '\"') {
       if (!(bcount & 1)) in_quotes = !in_quotes;
       bcount = 0;
-    }
-    else bcount = 0;
+    } else
+      bcount = 0;
     cmdline++;
   }
   while (*cmdline == '\t' || *cmdline == ' ') cmdline++;
 
-  GetStartupInfoA( &info );
+  GetStartupInfoA(&info);
   if (!(info.dwFlags & STARTF_USESHOWWINDOW)) info.wShowWindow = SW_SHOWNORMAL;
-  return WinMain( GetModuleHandleA(0), 0, cmdline, info.wShowWindow );
+  return WinMain(GetModuleHandleA(0), 0, cmdline, info.wShowWindow);
 }
 
 
@@ -149,7 +151,7 @@ bool ParseDisplay(LPTSTR display, int displaylen, LPTSTR phost, int hostlen,
                   int *pport)
 {
   if (hostlen - 1 < (int)strlen(display))
-      return false;
+    return false;
 
   int tmp_port;
   bool doubleColon = false;

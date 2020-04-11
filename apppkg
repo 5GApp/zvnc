@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+
+# check docker image for packaging
+if [ $# == 0 ]; then
+  echo "Build Docker image as cloudvnc:2.2.x"
+  docker image build --compress -t cloudvnc:2.2.x -f ./Dockerfile .
+fi
+
+if [ "$(docker images -q cloudvnc:2.2.x 2> /dev/null)" == "" ]; then
+  echo "Build Docker image as cloudvnc:2.2.x"
+  docker image build --compress -t cloudvnc:2.2.x -f ./Dockerfile .
+fi
+
+# execute commands 
+if [ $# -ne 0 ]; then
+  echo "$@ ..."
+  docker run -v `pwd`:`pwd` -w `pwd` -i -t --rm --network host cloudvnc:2.2.x $@
+else
+  echo "Start services ..."
+  docker run -d --restart=on-failure --network host cloudvnc:2.2.x
+fi

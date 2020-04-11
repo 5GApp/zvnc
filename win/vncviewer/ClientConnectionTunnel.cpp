@@ -1,4 +1,4 @@
-//  Copyright (C) 2013, 2016-2017 D. R. Commander. All Rights Reserved.
+//  Copyright (C) 2013, 2016-2018 D. R. Commander. All Rights Reserved.
 //  Copyright (C) 2000 Const Kaplinsky.  All Rights Reserved.
 //  Copyright (C) 1999 AT&T Laboratories Cambridge.  All Rights Reserved.
 //
@@ -25,7 +25,7 @@
 #include "Exception.h"
 
 
-#define DEFAULT_SSH_CMD "c:\\cygwin\\bin\\ssh.exe"
+#define DEFAULT_SSH_CMD "ssh.exe"
 #define DEFAULT_TUNNEL_CMD  \
   (DEFAULT_SSH_CMD " -f -L %L:localhost:%R %H sleep 20")
 #define DEFAULT_VIA_CMD  \
@@ -39,13 +39,8 @@ static char *getCmdPattern(bool tunnelOption)
 #pragma warning(disable: 4996)
   pattern = getenv(tunnelOption ? "VNC_TUNNEL_CMD" : "VNC_VIA_CMD");
 #pragma warning(default: 4996)
-  if (pattern == NULL) {
-    DWORD attrib = GetFileAttributes(DEFAULT_SSH_CMD);
-    if (attrib == INVALID_FILE_ATTRIBUTES ||
-        (attrib & FILE_ATTRIBUTE_DIRECTORY) != 0)
-      throw WarningException("SSH binary " DEFAULT_SSH_CMD " does not exist.");
+  if (pattern == NULL)
     pattern = tunnelOption ? DEFAULT_TUNNEL_CMD : DEFAULT_VIA_CMD;
-  }
 
   return pattern;
 }
@@ -86,9 +81,8 @@ static int FindFreeTcpPort(void)
 
 // NOTE: result points to a 1024-byte buffer
 
-static void fillCmdPattern(char *result, char *pattern,
-                           char *gatewayHost, char *remoteHost,
-                           char *remotePort, char *localPort,
+static void fillCmdPattern(char *result, char *pattern, char *gatewayHost,
+                           char *remoteHost, char *remotePort, char *localPort,
                            bool tunnelOption)
 {
   int i, j;
@@ -165,5 +159,5 @@ void ClientConnection::SetupSSHTunnel(void)
   SPRINTF(m_host, "localhost");
 
   if (system(cmd) != 0)
-		throw WarningException("Could not start SSH client to create tunnel");
+    throw WarningException("Could not start SSH client to create tunnel");
 }

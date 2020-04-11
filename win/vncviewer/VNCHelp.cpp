@@ -33,7 +33,7 @@ VNCHelp::VNCHelp()
 
 void VNCHelp::Popup(LPARAM lParam)
 {
-  LPHELPINFO hlp = (LPHELPINFO) lParam;
+  LPHELPINFO hlp = (LPHELPINFO)lParam;
   HH_POPUP popup;
 
   if (hlp->iCtrlId != 0) {
@@ -93,7 +93,7 @@ void VNCHelp::Popup(LPARAM lParam)
 
 BOOL VNCHelp::TranslateMsg(MSG *pmsg)
 {
-  return (HtmlHelp(NULL, NULL, HH_PRETRANSLATEMESSAGE, (DWORD_PTR)pmsg) != 0);
+  return HtmlHelp(NULL, NULL, HH_PRETRANSLATEMESSAGE, (DWORD_PTR)pmsg) != 0;
 }
 
 

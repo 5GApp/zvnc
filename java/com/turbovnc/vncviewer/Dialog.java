@@ -1,6 +1,6 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
  * Copyright (C) 2011-2013 Brian P. Hinz
- * Copyright (C) 2012-2014, 2016 D. R. Commander.  All Rights Reserved.
+ * Copyright (C) 2012-2014, 2016, 2018 D. R. Commander.  All Rights Reserved.
  *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -30,14 +30,14 @@ package com.turbovnc.vncviewer;
 import java.awt.*;
 import java.awt.Dialog.*;
 import javax.swing.*;
-import java.lang.reflect.*;
+import javax.swing.text.*;
 
 import com.turbovnc.rdr.*;
 import com.turbovnc.rfb.LogWriter;
 
 class Dialog {
 
-  public Dialog(boolean modal_) {
+  Dialog(boolean modal_) {
     modal = modal_;
   }
 
@@ -65,7 +65,11 @@ class Dialog {
       throw new ErrorException("Unknown window type");
     }
 
-    setIcon();
+    // Under Java 6 and later, ownerless JDialogs in the TurboVNC Viewer are
+    // created with a null owner to ensure that they appear in the task
+    // switcher on Linux.  However, this necessitates using
+    // JDialog.setIconImage() to set the icon image.
+    dlg.setIconImage(VncViewer.FRAME_IMAGE);
 
     populateDialog(dlg);
     if (title != null)
@@ -86,7 +90,7 @@ class Dialog {
       if (owner.isAlwaysOnTop())
         dlg.setAlwaysOnTop(true);
     }
-    if ((VncViewer.applet && w == null) || !modal)
+    if (!modal)
       dlg.setAlwaysOnTop(true);
     dlg.setVisible(true);
     return ret;
@@ -104,21 +108,8 @@ class Dialog {
     return showDialog(null, title);
   }
 
-  private void setIcon() {
-    // Under Java 6 and later, ownerless JDialogs in the TurboVNC Viewer are
-    // created with a null owner to ensure that they appear in the task
-    // switcher on Linux.  However, this necessitates using
-    // JDialog.setIconImage() to set the icon image, and since that method is
-    // only available in Java 6 and later, we have to use reflect to invoke it.
-    try {
-      Class argClasses[] = new Class[]{Image.class};
-      Method setIconImage = Window.class.getMethod("setIconImage", argClasses);
-      setIconImage.invoke(dlg, VncViewer.frameImage);
-      return;
-    } catch (Exception e) {
-      vlog.debug("Could not set dialog icon:");
-      vlog.debug("  " + e.toString());
-    }
+  public boolean isShown() {
+    return (dlg != null && dlg.isVisible());
   }
 
   public void endDialog() {
@@ -139,7 +130,7 @@ class Dialog {
 
   // populateDialog() can be overridden in a derived class.  Typically it is
   // used to add pre-initialized components to the dialog instance.
-  protected void populateDialog(JDialog dlg) {
+  protected void populateDialog(JDialog dialog) {
   }
 
   public static void addGBComponent(JComponent c, JComponent cp,
@@ -149,19 +140,42 @@ class Dialog {
                                     double gwx, double gwy,
                                     int fill, int anchor,
                                     Insets insets) {
-      GridBagConstraints gbc = new GridBagConstraints();
-      gbc.anchor = anchor;
-      gbc.fill = fill;
-      gbc.gridx = gx;
-      gbc.gridy = gy;
-      gbc.gridwidth = gw;
-      gbc.gridheight = gh;
-      gbc.insets = insets;
-      gbc.ipadx = gipx;
-      gbc.ipady = gipy;
-      gbc.weightx = gwx;
-      gbc.weighty = gwy;
-      cp.add(c, gbc);
+    GridBagConstraints gbc = new GridBagConstraints();
+    gbc.anchor = anchor;
+    gbc.fill = fill;
+    gbc.gridx = gx;
+    gbc.gridy = gy;
+    gbc.gridwidth = gw;
+    gbc.gridheight = gh;
+    gbc.insets = insets;
+    gbc.ipadx = gipx;
+    gbc.ipady = gipy;
+    gbc.weightx = gwx;
+    gbc.weighty = gwy;
+    cp.add(c, gbc);
+  }
+
+  class WhitespaceDocumentFilter extends DocumentFilter {
+    public void insertString(DocumentFilter.FilterBypass fb, int offset,
+                             String string, AttributeSet attr)
+                             throws BadLocationException {
+      if (string != null)
+        string = string.replaceAll("\\s", "");
+      super.insertString(fb, offset, string, attr);
+    }
+
+    public void replace(DocumentFilter.FilterBypass fb, int offset, int length,
+                        String text, AttributeSet attrs)
+                        throws BadLocationException {
+      if (text != null)
+        text = text.replaceAll("\\s", "");
+      super.replace(fb, offset, length, text, attrs);
+    }
+  };
+
+  public void filterWhitespace(JTextField textField) {
+    DocumentFilter filter = new WhitespaceDocumentFilter();
+    ((AbstractDocument)textField.getDocument()).setDocumentFilter(filter);
   }
 
   private JDialog dlg;

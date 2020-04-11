@@ -1,6 +1,6 @@
 /* -*-mode:java; c-basic-offset:2; indent-tabs-mode:nil -*- */
 /*
-Copyright (c) 2002-2014 ymnk, JCraft,Inc. All rights reserved.
+Copyright (c) 2002-2016 ymnk, JCraft,Inc. All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -113,7 +113,7 @@ class UserAuthPublicKey extends UserAuth{
 
 //System.err.println("UserAuthPublicKey: identity.isEncrypted()="+identity.isEncrypted());
 
-        int count=5;
+        int count=3;
         while(true){
           if((identity.isEncrypted() && passphrase==null)){
             if(userinfo==null) throw new JSchException("USERAUTH fail");

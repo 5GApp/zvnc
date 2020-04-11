@@ -1,6 +1,6 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
  * Copyright (C) 2011-2012 Brian P. Hinz
- * Copyright (C) 2012, 2014 D. R. Commander.  All Rights Reserved.
+ * Copyright (C) 2012, 2014, 2018, 2020 D. R. Commander.  All Rights Reserved.
  *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -28,8 +28,8 @@ import com.jcraft.jsch.*;
 class PasswdDialog extends Dialog implements KeyListener, UserInfo,
   UIKeyboardInteractive {
 
-  public PasswdDialog(String title_, boolean userDisabled,
-                      String userName_, boolean passwdDisabled) {
+  PasswdDialog(String title_, boolean userDisabled, String userName_,
+               boolean passwdDisabled) {
     super(true);
     title = title_;
     userName = userName_;
@@ -63,6 +63,7 @@ class PasswdDialog extends Dialog implements KeyListener, UserInfo,
     dlg.addWindowListener(new WindowAdapter() {
       public void windowClosing(WindowEvent e) {
         endDialog();
+        ret = false;
       }
     });
 
@@ -80,17 +81,17 @@ class PasswdDialog extends Dialog implements KeyListener, UserInfo,
   }
 
   /** Handle the key-typed event. */
-  public void keyTyped(KeyEvent event) { }
+  public void keyTyped(KeyEvent event) {}
 
   /** Handle the key-released event. */
-  public void keyReleased(KeyEvent event) { }
+  public void keyReleased(KeyEvent event) {}
 
   /** Handle the key-pressed event. */
   public void keyPressed(KeyEvent event) {
     Object s = event.getSource();
     if (s instanceof JTextField && (JTextField)s == userEntry) {
       if (event.getKeyCode() == KeyEvent.VK_ENTER) {
-        endDialog();
+        passwdEntry.requestFocusInWindow();
       }
     } else if (s instanceof JPasswordField &&
                (JPasswordField)s == passwdEntry) {
@@ -104,22 +105,29 @@ class PasswdDialog extends Dialog implements KeyListener, UserInfo,
     return new String(passwdEntry.getPassword());
   }
 
-  public String getPassphrase() { return null; }
+  public String getPassphrase() { return getPassword(); }
 
-  public boolean promptPassphrase(String message) { return false; }
+  public boolean promptPassphrase(String message) {
+    if (showDialog(message) && passwdEntry != null &&
+        passwdEntry.getPassword().length > 0)
+      return true;
+    return false;
+  }
 
   public boolean promptPassword(String message) {
-    showDialog(message);
-    if (passwdEntry != null)
+    if (showDialog("SSH " + message) && passwdEntry != null)
       return true;
     return false;
   }
 
   public void showMessage(String message) {
-    JOptionPane pane = new JOptionPane(message);
-    JDialog dlg = pane.createDialog(null, "SSH Message");
-    dlg.setAlwaysOnTop(true);
-    dlg.setVisible(true);
+    if (VncViewer.getBooleanProperty("turbovnc.sshbannerdlg", true)) {
+      JOptionPane pane = new JOptionPane(message);
+      JDialog dlg = pane.createDialog(null, "SSH Message");
+      dlg.setAlwaysOnTop(true);
+      dlg.setVisible(true);
+    } else
+      System.out.print(message);
   }
 
   public boolean promptYesNo(String str) {
@@ -143,14 +151,16 @@ class PasswdDialog extends Dialog implements KeyListener, UserInfo,
 
     GridBagConstraints gbc =
       new GridBagConstraints(0, 0, 1, 1, 1, 1,
-                             GridBagConstraints.NORTHWEST,
+                             GridBagConstraints.WEST,
                              GridBagConstraints.NONE,
                              new Insets(0, 0, 0, 0), 0, 0);
     gbc.weightx = 1.0;
     gbc.gridwidth = GridBagConstraints.REMAINDER;
     gbc.gridx = 0;
-    panel.add(new JLabel(instruction), gbc);
-    gbc.gridy++;
+    if (instruction != null && instruction.length() > 0) {
+      panel.add(new JLabel(instruction), gbc);
+      gbc.gridy++;
+    }
 
     gbc.gridwidth = GridBagConstraints.RELATIVE;
 
@@ -175,8 +185,8 @@ class PasswdDialog extends Dialog implements KeyListener, UserInfo,
 
     if (JOptionPane.showConfirmDialog(null, panel, destination + ": " + name,
                                       JOptionPane.OK_CANCEL_OPTION,
-                                      JOptionPane.QUESTION_MESSAGE)
-        == JOptionPane.OK_OPTION) {
+                                      JOptionPane.QUESTION_MESSAGE) ==
+        JOptionPane.OK_OPTION) {
       String[] response = new String[prompt.length];
       for (int i = 0; i < prompt.length; i++) {
         response[i] = texts[i].getText();

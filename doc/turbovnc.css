@@ -15,6 +15,11 @@ a
 	text-decoration: none;
 }
 
+a code
+{
+	color: blue;
+}
+
 dt
 {
 	font-weight: bold;
@@ -36,6 +41,47 @@ pre
 	background-color: rgb(238, 238, 255);
 	margin-left: 25px;
 	margin-right: 25px;
+}
+
+em
+{
+	color: rgb(0, 0, 204);
+}
+
+pre em
+{
+	color: rgb(192, 0, 192);
+}
+
+code
+{
+	color: rgb(0, 0, 140);
+	padding-left: 2px;
+	padding-right: 2px;
+	padding-top: 1px;
+	padding-bottom: 1px;
+	font-family: courier,monospace;
+	font-size: 14px;
+	background-color: rgb(238, 238, 255);
+}
+
+em code, code em
+{
+	color: rgb(192, 0, 192);
+}
+
+strong.filename
+{
+	color: rgb(0, 0, 140);
+	padding-left: 2px;
+	padding-right: 2px;
+	font-size: 0.95em;
+	background-color: rgb(238, 238, 255);
+}
+
+strong.filename em
+{
+	color: rgb(192, 0, 192);
 }
 
 tr
@@ -158,8 +204,8 @@ h3
 
 div.figure
 {
-	text-align: center; 
-	padding: 20pt; 
+	text-align: center;
+	padding: 20pt;
 }
 
 caption
@@ -188,4 +234,3 @@ div.tableNote
 	text-align: center;
 	font-weight: bold;
 }
-

@@ -1,4 +1,4 @@
-/*  Copyright (C) 2013, 2015 D. R. Commander.  All Rights Reserved.
+/*  Copyright (C) 2013, 2015, 2018-2019 D. R. Commander.  All Rights Reserved.
  *
  *  This is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -15,6 +15,12 @@
  *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
  *  USA.
  */
+
+#ifdef __SUNPRO_C
+/* Oracle Developer Studio sometimes erroneously detects the _error() or
+   _warning*() macro followed by a semicolon as an unreachable statement. */
+#pragma error_messages(off, E_STATEMENT_NOT_REACHED)
+#endif
 
 #include <stdio.h>
 #include <string.h>
@@ -55,14 +61,15 @@ XErrorHandler prevhandler = NULL;
 #endif
 
 
-int xhandler(Display *dpy, XErrorEvent *e) {
+static int xhandler(Display *dpy, XErrorEvent *e)
+{
   if (e->serial == serial && (e->minor_code == X_ShmAttach &&
-      e->error_code == BadAccess)) {
+                              e->error_code == BadAccess)) {
     shmok = 0;
     return 0;
   }
   if (e->serial == serial && (e->minor_code == X_ShmCreatePixmap &&
-      e->error_code == BadImplementation)) {
+                              e->error_code == BadImplementation)) {
     shmok = 0;
     return 0;
   }
@@ -83,7 +90,8 @@ int xhandler(Display *dpy, XErrorEvent *e) {
   XSetErrorHandler(prevhandler);
 
 
-int main(void) {
+int main(void)
+{
   Display *dpy = NULL;
   Window win = 0;
   XSetWindowAttributes wattrs;
@@ -107,8 +115,8 @@ int main(void) {
   wattrs.border_pixel = 0;
   wattrs.colormap = cmap;
   wattrs.event_mask = 0;
-  win = XCreateWindow(dpy, DefaultRootWindow(dpy), 0, 0, 1, 1, 1,
-                      depth, InputOutput, DefaultVisual(dpy, screen),
+  win = XCreateWindow(dpy, DefaultRootWindow(dpy), 0, 0, 1, 1, 1, depth,
+                      InputOutput, DefaultVisual(dpy, screen),
                       CWBackPixel | CWBorderPixel | CWEventMask | CWColormap,
                       &wattrs);
   if (!win)

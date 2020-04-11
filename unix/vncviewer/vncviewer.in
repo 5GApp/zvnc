@@ -19,7 +19,11 @@ if [ "$ARCH" = "x86_64" ]; then
 fi
 
 if [ "$JAVA_HOME" != "" ]; then
-	JAWT_PATH=$JAVA_HOME/lib/$ARCH
+	if [ -f "$JAVA_HOME/lib/$ARCH/libjawt.so" ]; then
+		JAWT_PATH=$JAVA_HOME/lib/$ARCH
+	elif [ -f "$JAVA_HOME/lib/libjawt.so" ]; then
+		JAWT_PATH=$JAVA_HOME/lib
+	fi
 fi
 
 if [ "$JAWT_PATH" = "" ]; then
@@ -55,4 +59,8 @@ else
 	LD_LIBRARY_PATH=$JAWT_PATH:$LD_LIBRARY_PATH
 	export LD_LIBRARY_PATH
 fi
-exec $JAVA -server -d@BITS@ -Djava.library.path=$TVNC_JAVADIR -jar $TVNC_JAVADIR/VncViewer.jar ${1+"$@"}
+if [ "@BITS@" = "32" ]; then
+	exec $JAVA -server -d@BITS@ -Djava.library.path=$TVNC_JAVADIR -jar $TVNC_JAVADIR/VncViewer.jar ${1+"$@"}
+else
+	exec $JAVA -server -Djava.library.path=$TVNC_JAVADIR -jar $TVNC_JAVADIR/VncViewer.jar ${1+"$@"}
+fi

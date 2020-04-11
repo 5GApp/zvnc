@@ -1,15 +1,25 @@
-include_directories(../miext/sync ../mi ../Xi)
+include_directories(../Xi ../composite ../damageext ../mi ../miext/sync
+	../render ../xfixes)
 
-# This code has a lot of type puns.  Disable strict aliasing just to be safe.
-if(CMAKE_COMPILER_IS_GNUCC)
-	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fno-strict-aliasing")
-endif()
+foreach(dir /run/shm /dev/shm /var/tmp /tmp)
+	if(EXISTS ${dir})
+		add_definitions(-DSHMDIR=\"${dir}\")
+		break()
+	endif()
+endforeach()
+
+disable_compiler_warnings()
+handle_type_puns()
 
 add_library(Xext-server STATIC
 	bigreq.c
 	dpms.c
 	dpmsstubs.c
 	geext.c
+	hashtable.c
+	panoramiX.c
+	panoramiXprocs.c
+	panoramiXSwap.c
 	saver.c
 	security.c
 	shape.c

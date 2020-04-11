@@ -23,7 +23,7 @@
 #ifdef _WIN32
 LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
 #pragma code_page(1252)
-#endif //_WIN32
+#endif  //_WIN32
 
 /////////////////////////////////////////////////////////////////////////////
 //
@@ -44,9 +44,9 @@ STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "TurboVNC Authentication"
 FONT 8, "MS Shell Dlg"
 BEGIN
-    LTEXT           "VNC Host:",IDC_STATIC_HOST,7,8,36,10,SS_CENTERIMAGE |
+    LTEXT           "VNC server:",IDC_STATIC_HOST,7,8,40,10,SS_CENTERIMAGE |
                     NOT WS_GROUP
-    EDITTEXT        IDC_VNCHOST,46,7,95,12,ES_AUTOHSCROLL | ES_READONLY |
+    EDITTEXT        IDC_VNCHOST,50,7,91,12,ES_AUTOHSCROLL | ES_READONLY |
                     NOT WS_TABSTOP
     CONTROL         108,IDC_STATIC_LOGO,"Static",SS_BITMAP,7,23,32,30
     RTEXT           "User name:",IDC_STATIC_LOGIN,41,25,39,10,SS_CENTERIMAGE
@@ -96,33 +96,33 @@ IDD_OPT_CONN_TAB DIALOG DISCARDABLE  0, 0, 335, 179
 STYLE DS_CONTROL | WS_CHILD
 FONT 8, "MS Shell Dlg"
 BEGIN
-    GROUPBOX        "Display",IDC_STATIC_DISPLAY,4,4,160,83
+    GROUPBOX        "Display",IDC_STATIC_DISPLAY,4,4,160,97
     LTEXT           "Scaling factor:",IDC_STATIC_SCALE,13,15,46,10,SS_CENTERIMAGE
     COMBOBOX        IDC_SCALE_EDIT,64,14,81,85,CBS_DROPDOWN |
                     CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP
     LTEXT           "%",IDC_STATIC_P,150,15,10,10,SS_CENTERIMAGE
     LTEXT           "Remote desktop size:",IDC_STATIC_DESKTOPSIZE,13,30,71,10,
                     SS_CENTERIMAGE
-    COMBOBOX        IDC_DESKTOPSIZE_EDIT,89,29,66,85,CBS_DROPDOWN |
+    COMBOBOX        IDC_DESKTOPSIZE_EDIT,21,42,136,85,CBS_DROPDOWN |
                     CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP
     CONTROL         "Full-screen mode",IDC_FULLSCREEN,"Button",
-                    BS_AUTOCHECKBOX | WS_TABSTOP,13,44,145,10
-    LTEXT           "Span mode:",IDC_STATIC_SPAN,13,58,45,10,
+                    BS_AUTOCHECKBOX | WS_TABSTOP,13,58,145,10
+    LTEXT           "Span mode:",IDC_STATIC_SPAN,13,72,45,10,
                     SS_CENTERIMAGE
-    COMBOBOX        IDC_SPAN,58,56,90,50,CBS_DROPDOWNLIST |
+    COMBOBOX        IDC_SPAN,58,70,90,50,CBS_DROPDOWNLIST |
                     CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP
     CONTROL         "Deiconify on remote Bell event",IDC_BELLDEICONIFY,
-                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,13,72,145,10
-    GROUPBOX        "Mouse cursor",IDC_STATIC_MCURSOR,4,92,160,49
+                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,13,86,145,10
+    GROUPBOX        "Mouse cursor",IDC_STATIC_MCURSOR,4,106,160,49
     CONTROL         "Enable remote cursor shape updates",IDC_CSHAPE_ENABLE_RADIO,
                     "Button",BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP,13,
-                    103,145,10
+                    117,145,10
     CONTROL         "Draw remote cursor on the server",
                     IDC_CSHAPE_DISABLE_RADIO,"Button",BS_AUTORADIOBUTTON,13,
-                    115,145,10
+                    129,145,10
     CONTROL         "Don't show remote cursor",IDC_CSHAPE_IGNORE_RADIO,
-                    "Button",BS_AUTORADIOBUTTON,13,127,145,10
-    GROUPBOX        "Input",IDC_STATIC_MOUSE,171,4,160,67
+                    "Button",BS_AUTORADIOBUTTON,13,141,145,10
+    GROUPBOX        "Input",IDC_STATIC_MOUSE,171,4,160,79
     CHECKBOX        "View only (inputs ignored)",IDC_VIEWONLY,180,15,109,10
     LTEXT           "Keyboard grab mode:",IDC_STATIC_GRAB,180,29,70,10,
                     SS_CENTERIMAGE
@@ -133,11 +133,13 @@ BEGIN
                     WS_TABSTOP,180,43,145,10
     CONTROL         "Swap mouse buttons 2 and 3",ID_SESSION_SWAPMOUSE,"Button",
                     BS_AUTOCHECKBOX | WS_TABSTOP,180,55,145,10
-    GROUPBOX        "Restrictions",IDC_STATIC_RESTRICTIONS,171,76,160,39
+    CONTROL         "Toggle full-screen mode with Alt-Enter",IDC_FSALTENTER,
+                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,180,67,145,10
+    GROUPBOX        "Restrictions",IDC_STATIC_RESTRICTIONS,171,88,160,39
     CONTROL         "Request shared session",IDC_SHARED,"Button",
-                    BS_AUTOCHECKBOX | WS_TABSTOP,180,86,145,10
+                    BS_AUTOCHECKBOX | WS_TABSTOP,180,98,145,10
     CONTROL         "Disable clipboard transfer",IDC_DISABLECLIPBOARD,"Button",
-                    BS_AUTOCHECKBOX | WS_TABSTOP,180,98,109,10
+                    BS_AUTOCHECKBOX | WS_TABSTOP,180,110,109,10
 END
 
 IDD_FTBROWSE_DLG DIALOGEX 0, 0, 183, 196
@@ -597,7 +599,7 @@ BEGIN
     ID_SHOWWINDOW           "Display a connection window"
     ID_NEWCONN              "Make a manual connection"
     IDS_HELP
-"vncviewer [options] [<server>[:<display>]]\r\n\
+"vncviewer [options] [<host>[:<display>]]\r\n\
 \r\n\
 Options:\r\n\
 (For options with GUI equivalents, please refer to the interactive help feature\r\n\
@@ -684,7 +686,8 @@ options dialog\r\n\
 Equivalent of ""Global-->Local cursor shape"" in the options dialog\r\n\
 \r\n"
     IDS_HELP11
-"/desktopsize <w>x<h> | auto | server\r\n\
+"/desktopsize <W>x<H> |\r\n\
+             <W0>x<H0>+<X0>+<Y0>[,<W1>x<H1>+<X1>+<Y1>,...] | auto | server\r\n\
 Equivalent of ""Connection-->Display-->Desktop Size"" in the options dialog\r\n\
 \r\n"
     IDS_HELP12
@@ -721,7 +724,8 @@ as the primary monitor (as was the case in prior versions of TurboVNC.)\r\n\
     IDS_HELP15
 "/fsaltenter\r\n\
 /nofsaltenter\r\n\
-Allow/disallow the Alt+Enter key sequence to activate/deactivate full-screen mode\r\n\
+Equivalent of ""Connection-->Input-->Toggle full-screen mode with Alt-Enter"" in\r\n\
+the options dialog\r\n\
 \r\n"
     IDS_HELP16
 "/fullscreen\r\n\
@@ -742,9 +746,8 @@ from the System Menu.\r\n\
     IDS_HELP18
 "/ipv6\r\n\
 When used with /listen, this causes vncviewer to accept connections from\r\n\
-IPv6-enabled servers.  If your system supports IPv4-mapped IPv6 addresses,\r\n\
-then connections from IPv4 servers can also be accepted when this option is\r\n\
-enabled.\r\n\
+IPv6-enabled hosts.  If your system supports IPv4-mapped IPv6 addresses, then\r\n\
+connections from IPv4 hosts can also be accepted when this option is enabled.\r\n\
 \r\n\
 When used without /listen, this causes vncviewer to favor the IPv6 loopback\r\n\
 address when connecting to localhost.\r\n
@@ -776,10 +779,10 @@ in the options dialog\r\n\
     IDS_HELP23
 "/nounixlogin\r\n\
 When connecting to TightVNC/TurboVNC servers, this disables the use of Unix\r\n\
-login authentication.  This is useful if the server is configured to prefer an\r\n\
-authentication method that supports Unix login authentication and you want to\r\n\
-override this preference for a particular connection (for instance, to use a\r\n\
-one-time password.)\r\n\
+login authentication.  This is useful if the server is configured to prefer a\r\n\
+security type that supports Unix login authentication and you want to override\r\n\
+this preference for a particular connection (for instance, to use a one-time\r\n\
+password.)\r\n\
 \r\n"
     IDS_HELP24
 "/password <clear text password>\r\n\
@@ -863,7 +866,7 @@ END
 STRINGTABLE DISCARDABLE
 BEGIN
     IDC_OK                  "Connect to the specified VNC server."
-    IDC_LIST_MODE           "Switch to listen mode and close the dialog box. The listening viewer will wait for incoming connections from VNC servers. To connect to a listening viewer from the Unix/Linux TurboVNC Server, use the vncconnect program."
+    IDC_LIST_MODE           "Switch to listen mode and close the dialog box. The listening viewer will wait for incoming connections from VNC servers. To connect to a listening viewer from the TurboVNC Server, use the vncconnect program."
     IDC_CHECK_MESSAGE       "If this option is set, the viewer will show a warning before switching to full-screen mode. The warning reminds you how to exit that mode."
     IDC_CHECK_TOOLBAR       "If this option is set, then new viewer windows will have a toolbar by default. You can always show/hide the toolbar using the system menu, but this option sets the default behavior."
     IDC_EDIT_AMOUNT_LIST    "The viewer automatically saves host names and settings for past connections. This option specifies how many connections to remember."
@@ -874,7 +877,7 @@ END
 
 STRINGTABLE DISCARDABLE
 BEGIN
-    IDC_HOSTNAME_EDIT       "The IP address or host name of the VNC server to which you want to connect. Append :<display number> or ::<port number> to the host name (for example, ""myhost:1"" or ""myhost::5901"") to connect to a specific display number or TCP port."
+    IDC_HOSTNAME_EDIT       "The IP address or host name of the VNC server to which you want to connect. Append :<display number> or ::<port number> to the host name (for example, ""my_host:1"" or ""my_host::5901"") to connect to a specific display number or TCP port."
     IDC_BELLDEICONIFY       "If this option is checked, a minimized viewer window will be restored upon receiving a remote ""Bell"" event."
     IDC_VIEWONLY            "If this option is checked, you will be able to see but not control the remote desktop."
 END
@@ -888,10 +891,10 @@ END
 STRINGTABLE DISCARDABLE
 BEGIN
     IDC_EDIT_LOG_LEVEL      "Specifies the level of detail to include in the log file. Level 0 causes the viewer to log only the most important events, whereas Level 12 generates a lot of debugging output."
-    IDC_SHARED              "Enable multiple simultaneous viewer connections to the same server desktop. If the session is not shared, then only one viewer can connect to the same session at the same time. Unlike some VNC flavors, TurboVNC uses shared sessions by default."
+    IDC_SHARED              "Enable multiple simultaneous viewer connections to the same VNC session. If the session is not shared, then only one viewer can connect to the same session at the same time. Unlike some VNC flavors, TurboVNC uses shared sessions by default."
     IDC_ENCODING            "Choose one of these encoding methods based on the type of network you are using and your desired image quality and performance."
     IDC_SCALE_EDIT          "Reduce or enlarge the image of the remote desktop by the specified percentage.  ""Fixed Aspect Ratio"" automatically scales the remote desktop image to the size of the viewer window, preserving the aspect ratio of the remote desktop."
-    IDC_DESKTOPSIZE_EDIT    "Resize the remote desktop to the specified size (example: 1920x1200), if the server supports it.  ""Auto"" resizes the remote desktop as needed to fit in the local window without using scrollbars.  ""Server"" disables remote desktop resizing."
+    IDC_DESKTOPSIZE_EDIT    "Resize the remote desktop to the specified size/screen layout (example: 1920x1200 or 1920x1200+0+0,1920x1200+1920+0).  ""Auto"" resizes the desktop as needed to fit in the viewer window without using scrollbars.  ""Server"" disables remote desktop resizing."
     IDC_DOTCURSOR_RADIO     "Show local cursor position as a dot."
     IDC_NOCURSOR_RADIO      "Do not show local cursor position."
 END
@@ -900,14 +903,15 @@ STRINGTABLE DISCARDABLE
 BEGIN
     IDC_EMULATECHECK        "If this option is checked, pressing the left and right mouse buttons simultaneously will emulate a middle button click. This is useful if your mouse lacks a middle button."
     IDC_FULLSCREEN          "In full-screen mode, the viewer will show only the remote desktop. The local desktop, toolbar, and window decorations will not be shown."
+    IDC_FSALTENTER          "If this option is checked, Alt-Enter can be used as an alternate hotkey for toggling full-screen mode."
     IDC_SPAN                "This option specifies whether the viewer window should span all monitors, only the primary monitor, or whether it should span all monitors only if it cannot fit on the primary monitor (automatic.)"
     IDC_STATIC_SPAN         "This option specifies whether the viewer window should span all monitors, only the primary monitor, or whether it should span all monitors only if it cannot fit on the primary monitor (automatic.)"
     IDC_DISABLECLIPBOARD    "If this option is checked, the viewer will not send local clipboard changes to the server."
     IDC_CSHAPE_DISABLE_RADIO
-                            "In this mode, the server draws the mouse cursor and continuously sends it to the client as an image. This can create performance problems on slow networks, but it allows you to see mouse movements from other users in a shared session."
+                            "In this mode, the server draws the mouse cursor and continuously sends it to the viewer as an image. This can create performance problems on slow networks, but it allows you to see mouse movements from other users in a shared session."
     IDC_QUALITYLEVEL        "Higher JPEG quality levels result in less compression but better image quality."
     IDC_SUBSAMPLEVEL        "Each pixel in a JPEG image is represented as a brightness (luminance) value and a color (chrominance) value. Chrominance subsampling discards some or all chrominance values to reduce the image size, but it can create visible artifacts."
-    IDC_COMPRESSLEVEL       "Enabling zlib compression will greatly reduce the bandwidth usage of the Lossless Tight encoding method, but zlib requires a lot of server CPU time (more than JPEG, even.)  Thus, zlib is only really useful on slow networks."
+    IDC_COMPRESSLEVEL       "Enabling zlib compression will greatly reduce the bandwidth usage of the Lossless Tight encoding method, but zlib requires a lot of host CPU time (more than JPEG, even.)  Thus, zlib is only really useful on slow networks."
     IDC_CSHAPE_ENABLE_RADIO "In this mode, the server sends only changes to the remote cursor's shape and position. This results in the best mouse responsiveness."
     IDC_CSHAPE_IGNORE_RADIO "In this mode, the remote mouse cursor will not be shown at all. Cursor shape updates and new coordinates received from the server will be ignored."
 END
@@ -990,4 +994,3 @@ END
 
 /////////////////////////////////////////////////////////////////////////////
 #endif    // not APSTUDIO_INVOKED
-

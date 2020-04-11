@@ -1,7 +1,8 @@
 /*  Copyright (C) 1999 AT&T Laboratories Cambridge.  All Rights Reserved.
  *  Copyright (C) 2000 Const Kaplinsky.  All Rights Reserved.
- *  Copyright (C) 2012 Brian P. Hinz.  All Rights Reserved.
- *  Copyright (C) 2012-2015 D. R. Commander.  All Rights Reserved.
+ *  Copyright (C) 2012-2015, 2017-2018, 2020 D. R. Commander.
+ *                                           All Rights Reserved.
+ *  Copyright (C) 2012, 2016 Brian P. Hinz.  All Rights Reserved.
  *
  *  This is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -32,10 +33,12 @@ import com.turbovnc.rfb.*;
 import com.turbovnc.rdr.*;
 import com.turbovnc.network.*;
 
+import com.jcraft.jsch.ConfigRepository;
 import com.jcraft.jsch.JSch;
-import com.jcraft.jsch.Session;
+import com.jcraft.jsch.Logger;
+import com.jcraft.jsch.OpenSSHConfig;
 
-public class Tunnel {
+public final class Tunnel {
 
   public static void createTunnel(Options opts) throws Exception {
     int localPort;
@@ -74,22 +77,27 @@ public class Tunnel {
     if (opts.extSSH || (pattern != null && pattern.length() > 0))
       createTunnelExt(gatewayHost, remoteHost, remotePort, localPort, pattern,
                       opts);
-    else
-      createTunnelJSch(gatewayHost, remoteHost, remotePort, localPort, opts);
+    else {
+      createTunnelJSch(gatewayHost, opts);
+      vlog.debug("Forwarding local port " + localPort + " to " + remoteHost +
+                 ":" + remotePort + " (relative to gateway)");
+      opts.sshSession.setPortForwardingL(localPort, remoteHost, remotePort);
+    }
     opts.serverName = "localhost::" + localPort;
+    opts.sshTunnelActive = true;
   }
 
   /* Create a tunnel using the builtin JSch SSH client */
 
-  private static void createTunnelJSch(String gatewayHost, String remoteHost,
-                                       int remotePort, int localPort,
-                                       Options opts) throws Exception {
+  private static void createTunnelJSch(String host, Options opts)
+                                       throws Exception {
     JSch jsch = new JSch();
+    JSch.setLogger(LOGGER);
     String homeDir = new String("");
     try {
       homeDir = System.getProperty("user.home");
     } catch (java.security.AccessControlException e) {
-      System.out.println("Cannot access user.home system property");
+      System.err.println("Cannot access user.home system property");
     }
 
     // NOTE: JSch does not support all ciphers.  User may be prompted to accept
@@ -97,8 +105,8 @@ public class Tunnel {
     //       known_hosts file.
 
     File knownHosts = new File(homeDir + "/.ssh/known_hosts");
-    if (knownHosts.exists() && knownHosts.canRead())
-      jsch.setKnownHosts(knownHosts.getAbsolutePath());
+    jsch.setKnownHosts(knownHosts.getAbsolutePath());
+
     ArrayList<File> privateKeys = new ArrayList<File>();
     String sshKeyFile = VncViewer.sshKeyFile.getValue();
     String sshKey = VncViewer.sshKey.getValue();
@@ -120,6 +128,37 @@ public class Tunnel {
       privateKeys.add(new File(homeDir + "/.ssh/id_rsa"));
       privateKeys.add(new File(homeDir + "/.ssh/id_dsa"));
     }
+
+    // username and passphrase will be given via UserInfo interface.
+    vlog.debug("Opening SSH tunnel through gateway " + host);
+    int port = VncViewer.sshPort.getValue();
+    String user = opts.sshUser;
+    if (user == null)
+      user = (String)System.getProperties().get("user.name");
+
+    File sshConfigFile = new File(VncViewer.sshConfig.getValue());
+    if (sshConfigFile.exists() && sshConfigFile.canRead()) {
+      ConfigRepository repo =
+        OpenSSHConfig.parseFile(sshConfigFile.getAbsolutePath());
+      jsch.setConfigRepository(repo);
+      vlog.debug("Read OpenSSH config file " + VncViewer.sshConfig.getValue());
+      // This just ensures that the password dialog displays the correct
+      // user name.  JSch will ignore the user name and port passed to
+      // getSession() if the configuration has already been set using an
+      // OpenSSH configuration file.
+      String repoUser = repo.getConfig(host).getUser();
+      if (repoUser != null)
+        user = repoUser;
+    } else {
+      if (VncViewer.sshConfig.isDefault()) {
+        vlog.debug("Could not parse SSH config file " +
+                   VncViewer.sshConfig.getValue());
+      } else {
+        vlog.info("Could not parse SSH config file " +
+                  VncViewer.sshConfig.getValue());
+      }
+    }
+
     for (Iterator<File> i = privateKeys.iterator(); i.hasNext();) {
       File privateKey = (File)i.next();
       if (privateKey.exists() && privateKey.canRead()) {
@@ -131,50 +170,31 @@ public class Tunnel {
       }
     }
 
-    // username and passphrase will be given via UserInfo interface.
-    vlog.debug("Opening SSH tunnel through gateway " + gatewayHost);
-    String user = opts.sshUser;
-    if (user == null)
-      user = (String)System.getProperties().get("user.name");
-    Session session = null;
-    if (user != null && jsch.getIdentityNames().size() > 0) {
-      session = jsch.getSession(user, gatewayHost,
-                                VncViewer.sshPort.getValue());
-      try {
-        PasswdDialog dlg = new PasswdDialog(new String("SSH Authentication"),
-                                            false, user, false);
-        session.setUserInfo(dlg);
-        session.connect();
-      } catch (com.jcraft.jsch.JSchException e) {
-        System.out.println("Could not authenticate using SSH private key.  Falling back to user/password.");
-        jsch.removeAllIdentity();
-        session = null;
-      }
-    }
-    if (session == null) {
-      PasswdDialog dlg = new PasswdDialog(new String("SSH Authentication"),
-                                          false, user, false);
-      dlg.promptPassword(new String("SSH Authentication"));
-      session = jsch.getSession(dlg.userEntry.getText(), gatewayHost,
-                                VncViewer.sshPort.getValue());
-      session.setPassword(new String(dlg.passwdEntry.getPassword()));
-      session.setUserInfo(dlg);
-      session.connect();
-    }
-    vlog.debug("Forwarding local port " + localPort + " to " + remoteHost +
-               ":" + remotePort + " (relative to gateway)");
-    session.setPortForwardingL(localPort, remoteHost, remotePort);
+    opts.sshSession = jsch.getSession(user, host, port);
+    // OpenSSHConfig doesn't recognize StrictHostKeyChecking
+    if (opts.sshSession.getConfig("StrictHostKeyChecking") == null)
+      opts.sshSession.setConfig("StrictHostKeyChecking", "ask");
+    opts.sshSession.setConfig("MaxAuthTries", "3");
+    String auth = System.getProperty("turbovnc.sshauth");
+    if (auth == null)
+      auth = "publickey,keyboard-interactive,password";
+    opts.sshSession.setConfig("PreferredAuthentications", auth);
+    PasswdDialog dlg = new PasswdDialog(new String("SSH Authentication"),
+                                        true, user, false);
+    opts.sshSession.setUserInfo(dlg);
+    opts.sshSession.connect();
   }
 
   /* Create a tunnel using an external SSH client.  This supports the same
      VNC_TUNNEL_CMD and VNC_VIA_CMD environment variables as the native viewers
      do. */
 
-  private static final String DEFAULT_SSH_CMD = "/usr/bin/ssh";
-  private static final String DEFAULT_TUNNEL_CMD
-    = DEFAULT_SSH_CMD + " -f -L %L:localhost:%R %H sleep 20";
-  private static final String DEFAULT_VIA_CMD
-    = DEFAULT_SSH_CMD + " -f -L %L:%H:%R %G sleep 20";
+  private static final String DEFAULT_SSH_CMD =
+    (VncViewer.OS.startsWith("windows") ? "ssh.exe" : "/usr/bin/ssh");
+  private static final String DEFAULT_TUNNEL_CMD =
+    DEFAULT_SSH_CMD + " -f -L %L:localhost:%R %H sleep 20";
+  private static final String DEFAULT_VIA_CMD =
+    DEFAULT_SSH_CMD + " -f -L %L:%H:%R %G sleep 20";
 
   public static void createTunnelExt(String gatewayHost, String remoteHost,
                                      int remotePort, int localPort,
@@ -187,16 +207,21 @@ public class Tunnel {
                                     remotePort, localPort, opts);
 
     vlog.debug("SSH command line: " + command);
-    Process p = Runtime.getRuntime().exec(command);
-    if (p != null)
-      p.waitFor();
+    List<String> args = ArgumentTokenizer.tokenize(command);
+    ProcessBuilder pb = new ProcessBuilder(args);
+    pb.redirectInput(ProcessBuilder.Redirect.INHERIT);
+    pb.redirectOutput(ProcessBuilder.Redirect.INHERIT);
+    pb.redirectError(ProcessBuilder.Redirect.INHERIT);
+    Process p = pb.start();
+    if (p == null || p.waitFor() != 0)
+      throw new ErrorException("External SSH error");
   }
 
   private static String fillCmdPattern(String pattern, String gatewayHost,
                                        String remoteHost, int remotePort,
                                        int localPort, Options opts) {
     int i, j;
-    boolean H_found = false, G_found = false, R_found = false, L_found = false;
+    boolean hFound = false, gFound = false, rFound = false, lFound = false;
     String command = "";
 
     if (opts.sshUser != null)
@@ -207,33 +232,68 @@ public class Tunnel {
         switch (pattern.charAt(++i)) {
           case 'H':
             command += (opts.tunnel ? gatewayHost : remoteHost);
-            H_found = true;
+            hFound = true;
             continue;
           case 'G':
             command += gatewayHost;
-            G_found = true;
+            gFound = true;
             continue;
           case 'R':
             command += remotePort;
-            R_found = true;
+            rFound = true;
             continue;
           case 'L':
             command += localPort;
-            L_found = true;
+            lFound = true;
             continue;
         }
       }
       command += pattern.charAt(i);
     }
 
-    if (!H_found || !R_found || !L_found)
+    if (!hFound || !rFound || !lFound)
       throw new ErrorException("%H, %R or %L absent in tunneling command template.");
 
-    if (!opts.tunnel && !G_found)
+    if (!opts.tunnel && !gFound)
       throw new ErrorException("%G pattern absent in tunneling command template.");
 
     return command;
   }
 
+  // JSch logging interface
+  private static final Logger LOGGER = new Logger() {
+    public boolean isEnabled(int level) {
+      switch (level) {
+        case Logger.DEBUG:
+        case Logger.INFO:
+        case Logger.WARN:
+        case Logger.ERROR:
+        case Logger.FATAL:
+          return true;
+        default:
+          return false;
+      }
+    }
+
+    public void log(int level, String message) {
+      switch (level) {
+        case Logger.DEBUG:
+        case Logger.INFO:
+          vlogSSH.sshdebug(message);
+          return;
+        case Logger.WARN:
+          vlogSSH.status(message);
+          return;
+        case Logger.ERROR:
+          vlogSSH.error(message);
+          return;
+        case Logger.FATAL:
+          throw new ErrorException("JSch: " + message);
+      }
+    }
+  };
+
+  private Tunnel() {}
   static LogWriter vlog = new LogWriter("Tunnel");
+  static LogWriter vlogSSH = new LogWriter("JSch");
 }

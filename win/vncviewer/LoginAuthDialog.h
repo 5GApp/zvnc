@@ -36,12 +36,12 @@ class LoginAuthDialog
     virtual ~LoginAuthDialog();
     INT_PTR DoDialog();
 
-    static BOOL CALLBACK DlgProc(HWND hwndDlg, UINT uMsg,
-                                 WPARAM wParam, LPARAM lParam);
+    static BOOL CALLBACK DlgProc(HWND hwndDlg, UINT uMsg, WPARAM wParam,
+                                 LPARAM lParam);
   private:
     char m_title[256];
     char *m_vnchost;
     bool m_username_disabled;
 };
 
-#endif // LOGINAUTHDIALOG_H__
+#endif  // LOGINAUTHDIALOG_H__

@@ -1,4 +1,5 @@
-//  Copyright (C) 2009-2013, 2015-2017 D. R. Commander. All Rights Reserved.
+//  Copyright (C) 2009-2013, 2015-2018, 2020 D. R. Commander.
+//                                           All Rights Reserved.
 //  Copyright 2009 Pierre Ossman for Cendio AB
 //  Copyright (C) 2005-2008 Sun Microsystems, Inc. All Rights Reserved.
 //  Copyright (C) 2004 Landmark Graphics Corporation. All Rights Reserved.
@@ -58,16 +59,13 @@ extern "C" {
 
 
 #define PF_EQ(x, y)  \
-  ((x.bitsPerPixel == y.bitsPerPixel) &&  \
-   (x.depth == y.depth) &&  \
+  ((x.bitsPerPixel == y.bitsPerPixel) && (x.depth == y.depth) &&  \
    ((x.bigEndian == y.bigEndian) || (x.bitsPerPixel == 8)) &&  \
    (x.trueColour == y.trueColour) &&  \
-   (!x.trueColour || ((x.redMax == y.redMax) &&  \
-                      (x.greenMax == y.greenMax) &&  \
-                      (x.blueMax == y.blueMax) &&  \
-                      (x.redShift == y.redShift) &&  \
-                      (x.greenShift == y.greenShift) &&  \
-                      (x.blueShift == y.blueShift))))
+   (!x.trueColour ||  \
+    ((x.redMax == y.redMax) && (x.redShift == y.redShift) &&  \
+     (x.greenMax == y.greenMax) && (x.greenShift == y.greenShift) &&  \
+     (x.blueMax == y.blueMax) && (x.blueShift == y.blueShift))))
 
 const rfbPixelFormat vnc8bitFormat =
   { 8, 8, 0, 1, 7, 7, 3, 0, 3, 6, 0, 0 };
@@ -108,10 +106,10 @@ ClientConnection::ClientConnection(VNCviewerApp *pApp, SOCKET sock) :
   m_serverInitiated = true;
   struct sockaddr_storage svraddr;
   int sasize = sizeof(svraddr);
-  if (getpeername(sock, (struct sockaddr *) &svraddr,
-      &sasize) != SOCKET_ERROR &&
-      getnameinfo((struct sockaddr *)&svraddr, sasize, hostname,
-                  NI_MAXHOST, NULL, 0, NI_NUMERICHOST) == 0) {
+  if (getpeername(sock, (struct sockaddr *)&svraddr,
+                  &sasize) != SOCKET_ERROR &&
+      getnameinfo((struct sockaddr *)&svraddr, sasize, hostname, NI_MAXHOST,
+                  NULL, 0, NI_NUMERICHOST) == 0) {
     SPRINTF(m_host, "%s", hostname);
     m_host[255] = 0;
     if (svraddr.ss_family == AF_INET6)
@@ -121,7 +119,7 @@ ClientConnection::ClientConnection(VNCviewerApp *pApp, SOCKET sock) :
   } else {
     STRCPY(m_host, "(unknown)");
     m_port = 0;
-  };
+  }
 }
 
 
@@ -171,7 +169,7 @@ void ClientConnection::Init(VNCviewerApp *pApp)
   m_pendingFormatChange = false;
   m_pendingEncodingChange = false;
 
-  m_hScrollPos = 0; m_vScrollPos = 0;
+  m_hScrollPos = 0;  m_vScrollPos = 0;
 
   m_waitingOnEmulateTimer = false;
   m_emulatingMiddleButton = false;
@@ -189,7 +187,8 @@ void ClientConnection::Init(VNCviewerApp *pApp)
   m_pApp->RegisterConnection(this);
 
   memset(&fb, 0, sizeof(fb));
-  if ((j = tjInitDecompress()) == NULL) throw(ErrorException(tjGetErrorStr()));
+  if ((j = tjInitDecompress()) == NULL)
+    throw ErrorException(tjGetErrorStr());
 
   node = list = tail = NULL;
 
@@ -201,6 +200,8 @@ void ClientConnection::Init(VNCviewerApp *pApp)
 
   m_supportsSetDesktopSize = false;
   m_waitingOnResizeTimer = false;
+  m_checkLayout = false;
+  m_serverXinerama = false;
 
   m_firstUpdate = true;
 
@@ -299,12 +300,11 @@ void ClientConnection::Run()
     if (m_port == -1) {
       GetConnectDetails();
     } else {
-      if (m_pApp->m_options.m_listening) {
+      if (m_pApp->m_options.m_listening)
         m_opts.LoadOpt(m_opts.m_display, KEY_VNCVIEWER_HISTORY);
-      }
     }
 
-    if (strlen((const char *) m_pApp->m_options.m_encPasswd) > 0) {
+    if (strlen((const char *)m_pApp->m_options.m_encPasswd) > 0) {
       memcpy(m_encPasswd, m_pApp->m_options.m_encPasswd, 8);
       memset(m_pApp->m_options.m_encPasswd, 0, 8);
       m_passwdSet = true;
@@ -338,9 +338,8 @@ void ClientConnection::Run()
     // Enable file transfers only if the server supports that.
     m_enableFileTransfers = false;
     if (m_clientMsgCaps.IsEnabled(rfbFileListRequest) &&
-        m_serverMsgCaps.IsEnabled(rfbFileListData)) {
+        m_serverMsgCaps.IsEnabled(rfbFileListData))
       m_enableFileTransfers = true;
-    }
   }
 
   // Close the "Connecting..." dialog box if not closed yet.
@@ -351,13 +350,16 @@ void ClientConnection::Run()
 
   EnableFullControlOptions();
 
+  EnableZoomOptions();
+
   CreateLocalFramebuffer();
 
   SetupPixelFormat();
 
   m_pendingEncodingChange = true;
 
-  hotkeys.Init(m_opts.m_FSAltEnter);
+  hotkeys.Init(m_opts.m_FSAltEnter,
+               m_opts.m_desktopSize.mode != SIZE_AUTO && !m_opts.m_FitWindow);
 
   // This starts the worker thread.
   // The rest of the processing continues in run_undetached.
@@ -365,7 +367,7 @@ void ClientConnection::Run()
 }
 
 
-static WNDCLASS wndclass; // FIXME!
+static WNDCLASS wndclass;  // FIXME!
 
 void ClientConnection::CreateDisplay()
 {
@@ -392,7 +394,7 @@ void ClientConnection::CreateDisplay()
   wndclass.hInstance      = m_pApp->m_instance;
   wndclass.hIcon          = NULL;
   wndclass.hCursor        = LoadCursor(NULL, IDC_ARROW);
-  wndclass.hbrBackground  = (HBRUSH) GetStockObject(BLACK_BRUSH);
+  wndclass.hbrBackground  = (HBRUSH)GetStockObject(BLACK_BRUSH);
   wndclass.lpszMenuName   = (LPCTSTR)NULL;
   wndclass.lpszClassName  = "ScrollClass";
 
@@ -492,9 +494,17 @@ void ClientConnection::CreateDisplay()
              "&Full screen\tCtrl-Alt-Shift-F");
   AppendMenu(hsysmenu, MF_STRING, ID_DEFAULT_WINDOW_SIZE,
              "Default window si&ze/position\tCtrl-Alt-Shift-Z");
+  AppendMenu(hsysmenu, MF_STRING, ID_ZOOM_IN,
+             "Zoom in\tCtrl-Alt-Shift +");
+  AppendMenu(hsysmenu, MF_STRING, ID_ZOOM_OUT,
+             "Zoom out\tCtrl-Alt-Shift -");
+  AppendMenu(hsysmenu, MF_STRING, ID_ZOOM_100,
+             "Zoom 100%\tCtrl-Alt-Shift-0");
   AppendMenu(hsysmenu, MF_STRING, ID_TOOLBAR,
              "Show &toolbar\tCtrl-Alt-Shift-T");
   AppendMenu(hsysmenu, MF_SEPARATOR, NULL, NULL);
+  AppendMenu(hsysmenu, MF_STRING, ID_TOGGLE_VIEWONLY,
+             "&View only\tCtrl-Alt-Shift-V");
   AppendMenu(hsysmenu, MF_STRING, ID_TOGGLE_GRAB,
              "&Grab keyboard\tCtrl-Alt-Shift-G");
   if (!m_opts.m_restricted) {
@@ -510,6 +520,9 @@ void ClientConnection::CreateDisplay()
              "Ctrl key down");
   AppendMenu(hsysmenu, MF_STRING, ID_CONN_ALTDOWN,
              "Alt key down");
+  AppendMenu(hsysmenu, MF_SEPARATOR, NULL, NULL);
+  AppendMenu(hsysmenu, MF_STRING, ID_TOGGLE_CLIPBOARD,
+             "&Clipboard transfer\tCtrl-Alt-Shift-C");
   AppendMenu(hsysmenu, MF_SEPARATOR, NULL, NULL);
   AppendMenu(hsysmenu, MF_STRING | MF_GRAYED, IDD_FILETRANSFER,
              "Transf&er files...\tCtrl-Alt-Shift-E");
@@ -530,11 +543,11 @@ void ClientConnection::CreateDisplay()
 
   m_hToolbar = CreateToolbar();
 
-  m_hwnd = CreateWindow("ChildClass", NULL,
-                        WS_CHILD | WS_CLIPSIBLINGS,
+  m_hwnd = CreateWindow("ChildClass", NULL, WS_CHILD | WS_CLIPSIBLINGS,
                         CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
-                        CW_USEDEFAULT, m_hwndscroll, NULL,
-                        m_pApp->m_instance, NULL);
+                        CW_USEDEFAULT, m_hwndscroll, NULL, m_pApp->m_instance,
+                        NULL);
+  ImmAssociateContext(m_hwnd, NULL);
   m_opts.m_hWindow = m_hwnd;
   hotkeys.SetWindow(m_hwnd1);
   ShowWindow(m_hwnd, SW_HIDE);
@@ -566,12 +579,19 @@ void ClientConnection::CreateDisplay()
       m_hctx = hctx;
   }
 
-  SetWindowLongPtr(m_hwnd, GWLP_USERDATA, (LONG_PTR) this);
+  SetWindowLongPtr(m_hwnd, GWLP_USERDATA, (LONG_PTR)this);
   SetWindowLongPtr(m_hwnd, GWLP_WNDPROC, (LONG_PTR)ClientConnection::WndProc);
 
   if (pApp->m_options.m_toolbar)
-    CheckMenuItem(GetSystemMenu(m_hwnd1, FALSE),
-          ID_TOOLBAR, MF_BYCOMMAND | MF_CHECKED);
+    CheckMenuItem(GetSystemMenu(m_hwnd1, FALSE), ID_TOOLBAR,
+                  MF_BYCOMMAND | MF_CHECKED);
+  CheckMenuItem(GetSystemMenu(m_hwnd1, FALSE), ID_TOGGLE_VIEWONLY,
+                MF_BYCOMMAND | (pApp->m_options.m_ViewOnly ?
+                                MF_CHECKED : MF_UNCHECKED));
+  CheckMenuItem(GetSystemMenu(m_hwnd1, FALSE), ID_TOGGLE_CLIPBOARD,
+                MF_BYCOMMAND | (pApp->m_options.m_DisableClipboard ?
+                                MF_UNCHECKED : MF_CHECKED));
+
   SaveConnectionHistory();
   // record which client created this window
 
@@ -689,9 +709,9 @@ void ClientConnection::SaveConnectionHistory()
 
   // Create or open the registry key for connection history.
   HKEY hKey;
-  LONG result = RegCreateKeyEx(HKEY_CURRENT_USER, KEY_VNCVIEWER_HISTORY,
-                               0, NULL, REG_OPTION_NON_VOLATILE,
-                               KEY_ALL_ACCESS, NULL, &hKey, NULL);
+  LONG result = RegCreateKeyEx(HKEY_CURRENT_USER, KEY_VNCVIEWER_HISTORY, 0,
+                               NULL, REG_OPTION_NON_VOLATILE, KEY_ALL_ACCESS,
+                               NULL, &hKey, NULL);
   if (result != ERROR_SUCCESS)
     return;
 
@@ -707,7 +727,7 @@ void ClientConnection::SaveConnectionHistory()
   memset(connListBuffer, 0, connListBufferSize * sizeof(char));
 
   // Index first characters of each entry for convenient access.
-  char **connList = new char*[maxEntries];
+  char **connList = new char *[maxEntries];
   int i;
   for (i = 0; i < maxEntries; i++)
     connList[i] = &connListBuffer[i * entryBufferSize];
@@ -783,6 +803,20 @@ void ClientConnection::EnableFullControlOptions()
 }
 
 
+void ClientConnection::EnableZoomOptions()
+{
+  if (m_opts.m_desktopSize.mode == SIZE_AUTO || m_opts.m_FitWindow) {
+    EnableAction(ID_ZOOM_IN, false);
+    EnableAction(ID_ZOOM_OUT, false);
+    EnableAction(ID_ZOOM_100, false);
+  } else {
+    EnableAction(ID_ZOOM_IN, true);
+    EnableAction(ID_ZOOM_OUT, true);
+    EnableAction(ID_ZOOM_100, true);
+  }
+}
+
+
 void ClientConnection::EnableAction(int id, bool enable)
 {
   if (enable) {
@@ -801,10 +835,10 @@ void ClientConnection::EnableAction(int id, bool enable)
 
 void ClientConnection::SwitchOffKeys()
 {
-  CheckMenuItem(GetSystemMenu(m_hwnd1, FALSE),
-                ID_CONN_ALTDOWN, MF_BYCOMMAND | MF_UNCHECKED);
-  CheckMenuItem(GetSystemMenu(m_hwnd1, FALSE),
-                ID_CONN_CTLDOWN, MF_BYCOMMAND | MF_UNCHECKED);
+  CheckMenuItem(GetSystemMenu(m_hwnd1, FALSE), ID_CONN_ALTDOWN,
+                MF_BYCOMMAND | MF_UNCHECKED);
+  CheckMenuItem(GetSystemMenu(m_hwnd1, FALSE), ID_CONN_CTLDOWN,
+                MF_BYCOMMAND | MF_UNCHECKED);
   SendMessage(m_hToolbar, TB_SETSTATE, (WPARAM)ID_CONN_CTLDOWN,
               (LPARAM)MAKELONG(TBSTATE_ENABLED, 0));
   SendMessage(m_hToolbar, TB_SETSTATE, (WPARAM)ID_CONN_ALTDOWN,
@@ -881,10 +915,12 @@ void ClientConnection::Connect()
   SPRINTF(portname, "%d", m_port);
   if (strlen(hostname) < 1)
     hostname = NULL;
-  if (getaddrinfo(hostname, portname, &hints, &addr) != 0) {
+  int gai_err = getaddrinfo(hostname, portname, &hints, &addr);
+  if (gai_err != 0) {
     char msg[512];
-    SPRINTF(msg, "Failed to get server address (%s).\n"
-            "Did you type the host name correctly?", m_host);
+    SPRINTF(msg, "Failed to get server address (%s):\n%s\n"
+            "Did you type the host name correctly?", m_host,
+            gai_strerror(gai_err));
     throw WarningException(msg);
   }
 
@@ -911,7 +947,8 @@ void ClientConnection::Connect()
 }
 
 
-void ClientConnection::SetSocketOptions() {
+void ClientConnection::SetSocketOptions()
+{
   // Disable Nagle's algorithm
   BOOL nodelayval = TRUE;
   if (setsockopt(m_sock, IPPROTO_TCP, TCP_NODELAY, (const char *)&nodelayval,
@@ -932,20 +969,17 @@ void ClientConnection::NegotiateProtocolVersion()
     m_connDlg->SetStatus("Server protocol version received");
 
   int majorVersion, minorVersion;
-  if (sscanf_s(pv, rfbProtocolVersionFormat, &majorVersion, &minorVersion)
-      != 2) {
+  if (sscanf_s(pv, rfbProtocolVersionFormat, &majorVersion,
+               &minorVersion) != 2)
     throw WarningException("Invalid protocol");
-  }
-  vnclog.Print(0, "RFB server supports protocol version 3.%d\n",
-         minorVersion);
+  vnclog.Print(0, "RFB server supports protocol version 3.%d\n", minorVersion);
 
-  if (majorVersion == 3 && minorVersion >= 8) {
+  if (majorVersion == 3 && minorVersion >= 8)
     m_minorVersion = 8;
-  } else if (majorVersion == 3 && minorVersion == 7) {
+  else if (majorVersion == 3 && minorVersion == 7)
     m_minorVersion = 7;
-  } else {
+  else
     m_minorVersion = 3;
-  }
 
   m_tightVncProtocol = false;
 
@@ -1028,8 +1062,8 @@ int ClientConnection::SelectSecurityType()
   if (nSecTypes == 0)
     throw WarningException(ReadFailureReason());
 
-  char *secTypeNames[] = {"None", "VncAuth"};
-  CARD8 knownSecTypes[] = {rfbSecTypeNone, rfbSecTypeVncAuth};
+  char *secTypeNames[] = { "None", "VncAuth" };
+  CARD8 knownSecTypes[] = { rfbSecTypeNone, rfbSecTypeVncAuth };
   int nKnownSecTypes = sizeof(knownSecTypes);
   CARD8 *secTypes = new CARD8[nSecTypes];
   ReadExact((char *)secTypes, nSecTypes);
@@ -1059,15 +1093,15 @@ int ClientConnection::SelectSecurityType()
         WriteExact((char *)&secType, sizeof(secType));
         if (m_connDlg != NULL)
           m_connDlg->SetStatus("Security type requested");
-        vnclog.Print(8, "Choosing security type %s(%d)\n",
-                     secTypeNames[i], (int)secType);
+        vnclog.Print(8, "Choosing security type %s(%d)\n", secTypeNames[i],
+                     (int)secType);
         break;
       }
     }
     if (secType != rfbSecTypeInvalid) break;
-    }
+  }
 
-    if (secType == rfbSecTypeInvalid) {
+  if (secType == rfbSecTypeInvalid) {
     vnclog.Print(0, "Server did not offer supported security type\n");
     throw ErrorException("Server did not offer supported security type!");
   }
@@ -1134,7 +1168,7 @@ void ClientConnection::PerformAuthenticationTight()
     if (authScheme == 0) {
       // Try server's preferred authentication scheme.
       for (int i = 0; (authScheme == 0) && (i < m_authCaps.NumEnabled());
-        i++) {
+           i++) {
         a = m_authCaps.GetByOrder(i);
         switch (a) {
           case rfbAuthVNC:
@@ -1187,20 +1221,19 @@ void ClientConnection::Authenticate(CARD32 authScheme)
   }
   ***/
 
-  switch(authScheme) {
-  case rfbAuthNone:
-    authFuncPtr = &ClientConnection::AuthenticateNone;
-    break;
-  case rfbAuthVNC:
-    authFuncPtr = &ClientConnection::AuthenticateVNC;
-    break;
-  case rfbAuthUnixLogin:
-    authFuncPtr = &ClientConnection::AuthenticateUnixLogin;
-    break;
-  default:
-    vnclog.Print(0, "Unknown authentication scheme: %d\n",
-                 (int)authScheme);
-    throw ErrorException("Unknown authentication scheme!");
+  switch (authScheme) {
+    case rfbAuthNone:
+      authFuncPtr = &ClientConnection::AuthenticateNone;
+      break;
+    case rfbAuthVNC:
+      authFuncPtr = &ClientConnection::AuthenticateVNC;
+      break;
+    case rfbAuthUnixLogin:
+      authFuncPtr = &ClientConnection::AuthenticateUnixLogin;
+      break;
+    default:
+      vnclog.Print(0, "Unknown authentication scheme: %d\n", (int)authScheme);
+      throw ErrorException("Unknown authentication scheme!");
   }
 
   vnclog.Print(0, "Authentication scheme: %s\n",
@@ -1291,7 +1324,8 @@ bool ClientConnection::AuthenticateVNC(char *errBuf, int errBufSize)
       snprintf(errBuf, errBufSize, "Empty password");
       return false;
     } else {
-      if (len > 0 && passwd[len-1] == '\n') passwd[len-1] = '\0';
+      if (len > 0 && passwd[len - 1] == '\n')
+        passwd[len - 1] = '\0';
     }
   }
   // Was the password already specified in a config file?
@@ -1307,9 +1341,8 @@ bool ClientConnection::AuthenticateVNC(char *errBuf, int errBufSize)
       snprintf(errBuf, errBufSize, "Empty password");
       return false;
     }
-    if (strlen(passwd) > 8) {
+    if (strlen(passwd) > 8)
       passwd[8] = '\0';
-    }
     vncEncryptPasswd(m_encPasswd, passwd);
     m_passwdSet = true;
   }
@@ -1343,7 +1376,8 @@ bool ClientConnection::AuthenticateUnixLogin(char *errBuf, int errBufSize)
       snprintf(errBuf, errBufSize, "Empty password");
       return false;
     } else {
-      if (len > 0 && passwd[len-1] == '\n') passwd[len-1] = '\0';
+      if (len > 0 && passwd[len - 1] == '\n')
+        passwd[len - 1] = '\0';
     }
   } else {
     LoginAuthDialog ad(m_opts.m_display, "Unix Login Authentication", user);
@@ -1411,9 +1445,8 @@ void ClientConnection::ReadServerInit()
   SetWindowTitle();
 
   vnclog.Print(0, "Desktop name \"%s\"\n", m_desktopName);
-  vnclog.Print(1, "Geometry %d x %d depth %d\n",
-               m_si.framebufferWidth, m_si.framebufferHeight,
-               m_si.format.depth);
+  vnclog.Print(1, "Geometry %d x %d depth %d\n", m_si.framebufferWidth,
+               m_si.framebufferHeight, m_si.format.depth);
 
   SizeWindow(true, true, false);
 }
@@ -1448,8 +1481,7 @@ void ClientConnection::SetWindowTitle()
       SPRINTF(zlibstr, " + CL %d", m_opts.m_compressLevel);
       snprintf(&title[strlen(title)], len - strlen(title),
                "[Lossless Tight%s]", zlibstr);
-    }
-    else {
+    } else {
       SPRINTF(zlibstr, " + CL %d", m_opts.m_compressLevel);
       snprintf(&title[strlen(title)], len - strlen(title),
                "[Tight + JPEG %s Q%d%s]", sampopt2str[m_opts.m_subsampLevel],
@@ -1462,13 +1494,19 @@ void ClientConnection::SetWindowTitle()
     else
       enc = m_opts.m_PreferredEncoding;
     if (enc >= 0 && enc <= rfbEncodingHextile) {
-      char encStr[6][8] = {"Raw", "", "", "", "", "Hextile"};
+      char encStr[6][8] = { "Raw", "", "", "", "", "Hextile" };
       snprintf(&title[strlen(title)], len - strlen(title), "[%s]",
                encStr[enc]);
     }
   }
+  if (m_opts.m_scaling) {
+    int sf = (m_opts.m_scale_num * 100) / m_opts.m_scale_den;
+    if (sf != 100)
+      snprintf(&title[strlen(title)], len - strlen(title), " - %d%%",
+               (m_opts.m_scale_num * 100) / m_opts.m_scale_den);
+  }
   SetWindowText(m_hwnd1, title);
-  delete [] title;
+  delete[] title;
 }
 
 
@@ -1513,14 +1551,48 @@ void ClientConnection::ReadCapabilityList(CapsContainer *caps, int count)
 void ClientConnection::SizeWindow(bool centered, bool resizeFullScreen,
                                   bool manual)
 {
-  if (InFullScreenMode() && !resizeFullScreen) return;
+  RECT fullwinrect, screenArea, workArea, winrect;
 
-  RECT fullwinrect;
+  if (InFullScreenMode() && !resizeFullScreen) {
+    if (manual) {
+      bool checkLayoutNow = false;
+
+      GetFullScreenMetrics(screenArea, workArea);
+      if (m_opts.m_desktopSize.mode == SIZE_AUTO) {
+        GetWindowRect(m_hwnd1, &winrect);
+        // If the window size is unchanged, check whether we need to force a
+        // desktop resize message to inform the server of a new screen layout
+        if (WidthOf(screenArea) == WidthOf(winrect) &&
+            HeightOf(screenArea) == HeightOf(winrect)) {
+          if (!EqualRect(&screenArea, &winrect))
+            m_checkLayout = true;
+          else
+            // A WM_MOVE message is unlikely to be sent to the window, so we
+            // need to check the layout immediately.
+            checkLayoutNow = true;
+        }
+      }
+      SetWindowPos(m_hwnd1, HWND_TOPMOST, screenArea.left, screenArea.top,
+                   WidthOf(screenArea), HeightOf(screenArea), SWP_NOSIZE);
+      if (checkLayoutNow) {
+        int w = WidthOf(screenArea), h = HeightOf(screenArea);
+        ScreenSet layout = ComputeScreenLayout(w, h);
+        if (w >= 1 && h >= 1 && layout != m_screenLayout)
+          SendDesktopSize(w, h, layout);
+      }
+    }
+    return;
+  }
 
   if (m_opts.m_desktopSize.mode == SIZE_AUTO && manual) {
-    RECT screenArea, workrect;
-    GetFullScreenMetrics(screenArea, workrect);
-    fullwinrect = workrect;
+    GetFullScreenMetrics(screenArea, workArea);
+    fullwinrect = workArea;
+    GetWindowRect(m_hwnd1, &winrect);
+    // If the window size is unchanged, check whether we need to force a
+    // desktop resize message to inform the server of a new screen layout
+    if (WidthOf(fullwinrect) == WidthOf(winrect) &&
+        HeightOf(fullwinrect) == HeightOf(winrect))
+      m_checkLayout = true;
     PositionWindow(fullwinrect, centered);
     return;
   } else if (m_opts.m_scaling && !m_opts.m_FitWindow) {
@@ -1528,8 +1600,7 @@ void ClientConnection::SizeWindow(bool centered, bool resizeFullScreen,
             m_si.framebufferWidth * m_opts.m_scale_num / m_opts.m_scale_den,
             m_si.framebufferHeight * m_opts.m_scale_num / m_opts.m_scale_den);
   } else {
-    SetRect(&fullwinrect, 0, 0,
-            m_si.framebufferWidth, m_si.framebufferHeight);
+    SetRect(&fullwinrect, 0, 0, m_si.framebufferWidth, m_si.framebufferHeight);
   }
 
   PositionWindow(fullwinrect, centered);
@@ -1550,8 +1621,6 @@ void ClientConnection::PositionWindow(RECT &fullwinrect, bool centered,
   GetFullScreenMetrics(screenArea, workrect);
   int workwidth = workrect.right - workrect.left;
   int workheight = workrect.bottom - workrect.top;
-  vnclog.Print(2, "Screen work area is %d x %d\n",
-               workwidth, workheight);
 
   AdjustWindowRectEx(&fullwinrect, GetWindowLong(m_hwnd, GWL_STYLE),
                      FALSE, GetWindowLong(m_hwnd, GWL_EXSTYLE));
@@ -1575,16 +1644,16 @@ void ClientConnection::PositionWindow(RECT &fullwinrect, bool centered,
 
   m_winwidth  = min(fullwinrect.right - fullwinrect.left, workwidth);
   m_winheight = min(fullwinrect.bottom - fullwinrect.top, workheight);
+
   if ((fullwinrect.right - fullwinrect.left > workwidth) &&
       (workheight - m_winheight >= 16) &&
-      m_opts.m_desktopSize.mode != SIZE_AUTO) {
+      m_opts.m_desktopSize.mode != SIZE_AUTO)
     m_winheight = m_winheight + 16;
-  }
+
   if ((fullwinrect.bottom - fullwinrect.top > workheight) &&
       (workwidth - m_winwidth >= 16) &&
-      m_opts.m_desktopSize.mode != SIZE_AUTO) {
+      m_opts.m_desktopSize.mode != SIZE_AUTO)
     m_winwidth = m_winwidth + 16;
-  }
 
   if (dimensionsOnly) return;
 
@@ -1624,6 +1693,20 @@ void ClientConnection::PositionWindow(RECT &fullwinrect, bool centered,
 }
 
 
+void ClientConnection::GetActualClientRect(RECT *rect)
+{
+  GetClientRect(m_hwnd1, rect);
+
+  if (GetMenuState(GetSystemMenu(m_hwnd1, FALSE),
+                   ID_TOOLBAR, MF_BYCOMMAND) == MF_CHECKED) {
+    RECT rtb;
+    GetWindowRect(m_hToolbar, &rtb);
+    int rtbheight = HeightOf(rtb) - 3;
+    rect->top += rtbheight;
+  }
+}
+
+
 void ClientConnection::PositionChildWindow()
 {
   RECT rparent;
@@ -1633,7 +1716,7 @@ void ClientConnection::PositionChildWindow()
   int parentheight = rparent.bottom - rparent.top;
 
   if (GetMenuState(GetSystemMenu(m_hwnd1, FALSE),
-        ID_TOOLBAR, MF_BYCOMMAND) == MF_CHECKED) {
+                   ID_TOOLBAR, MF_BYCOMMAND) == MF_CHECKED) {
     RECT rtb;
     GetWindowRect(m_hToolbar, &rtb);
     int rtbheight = rtb.bottom - rtb.top - 3;
@@ -1700,16 +1783,15 @@ void ClientConnection::PositionChildWindow()
   }
 
   int x, y;
-  if (parentwidth > m_fullwinwidth) {
+  if (parentwidth > m_fullwinwidth)
     x = (parentwidth - m_fullwinwidth) / 2;
-  } else {
+  else
     x = rparent.left;
-  }
-  if (parentheight > m_fullwinheight) {
+
+  if (parentheight > m_fullwinheight)
     y = (parentheight - m_fullwinheight) / 2;
-  } else {
+  else
     y = rparent.top;
-  }
 
   SetWindowPos(m_hwnd, HWND_TOP, x, y, min(parentwidth, m_fullwinwidth),
                min(parentheight, m_fullwinheight), SWP_SHOWWINDOW);
@@ -1761,7 +1843,7 @@ void ClientConnection::CreateLocalFramebuffer()
   // We create a bitmap which has the same pixel characteristics as
   // the local display, in the hope that blitting will be faster.
   if (fbx_init(&fb, m_hwnd, m_si.framebufferWidth, m_si.framebufferHeight,
-              1) == -1)
+               1) == -1)
     throw ErrorException(fbx_geterrmsg());
 
   m_hBitmapDC = fb.hmdc;
@@ -1783,8 +1865,8 @@ void ClientConnection::CreateLocalFramebuffer()
     rect.right = m_si.framebufferWidth / 2;
     rect.bottom = m_si.framebufferHeight / 2;
 
-    DrawText(m_hBitmapDC, "Please wait - initial screen loading", -1,
-             &rect, DT_SINGLELINE | DT_CENTER | DT_VCENTER);
+    DrawText(m_hBitmapDC, "Please wait - initial screen loading", -1, &rect,
+             DT_SINGLELINE | DT_CENTER | DT_VCENTER);
     SetBkColor(m_hBitmapDC, oldbgcol);
     SetTextColor(m_hBitmapDC, oldtxtcol);
   }
@@ -1909,8 +1991,8 @@ void ClientConnection::SetFormatAndEncodings()
   // Request desired compression level, if applicable
   if (useCompressLevel && m_opts.m_compressLevel >= 0 &&
       m_opts.m_compressLevel <= 9)
-    encs[se->nEncodings++] = Swap32IfLE(rfbEncodingCompressLevel0 +
-                                        m_opts.m_compressLevel);
+    encs[se->nEncodings++] =
+      Swap32IfLE(rfbEncodingCompressLevel0 + m_opts.m_compressLevel);
 
   // Request cursor shape updates, if enabled by user
   if (m_opts.m_requestShapeUpdates) {
@@ -1926,25 +2008,24 @@ void ClientConnection::SetFormatAndEncodings()
       m_opts.m_jpegQualityLevel <= 100) {
     int tightQualityLevel = m_opts.m_jpegQualityLevel / 10;
     if (tightQualityLevel > 9) tightQualityLevel = 9;
-    encs[se->nEncodings++] = Swap32IfLE(rfbEncodingQualityLevel0 +
-                                        tightQualityLevel);
-    encs[se->nEncodings++] = Swap32IfLE(rfbEncodingFineQualityLevel0 +
-                                        m_opts.m_jpegQualityLevel);
+    encs[se->nEncodings++] =
+      Swap32IfLE(rfbEncodingQualityLevel0 + tightQualityLevel);
+    encs[se->nEncodings++] =
+      Swap32IfLE(rfbEncodingFineQualityLevel0 + m_opts.m_jpegQualityLevel);
   } else if (m_opts.m_PreferredEncoding != rfbEncodingTight ||
              (m_opts.m_LastEncoding >= 0 &&
               m_opts.m_LastEncoding != rfbEncodingTight)) {
     int qualityLevel = m_opts.m_jpegQualityLevel;
     if (qualityLevel > 9) qualityLevel = 9;
-    encs[se->nEncodings++] = Swap32IfLE(rfbEncodingQualityLevel0 +
-                                        qualityLevel);
+    encs[se->nEncodings++] =
+      Swap32IfLE(rfbEncodingQualityLevel0 + qualityLevel);
   }
 
   // Request desired subsampling level, if applicable
   if (useSubsampLevel && m_opts.m_enableJpegCompression &&
-      m_opts.m_subsampLevel >= 0 &&
-      m_opts.m_subsampLevel <= TVNC_SAMPOPT - 1)
-    encs[se->nEncodings++] = Swap32IfLE(rfbEncodingSubsamp1X +
-                                        m_opts.m_subsampLevel);
+      m_opts.m_subsampLevel >= 0 && m_opts.m_subsampLevel <= TVNC_SAMPOPT - 1)
+    encs[se->nEncodings++] =
+      Swap32IfLE(rfbEncodingSubsamp1X + m_opts.m_subsampLevel);
 
   // Notify the server that we support LastRect and NewFBSize encodings
   encs[se->nEncodings++] = Swap32IfLE(rfbEncodingLastRect);
@@ -1997,8 +2078,8 @@ ClientConnection::~ClientConnection()
     m_sock = INVALID_SOCKET;
   }
 
-  if (m_desktopName != NULL) delete [] m_desktopName;
-  delete [] m_netbuf;
+  if (m_desktopName != NULL) delete[] m_desktopName;
+  delete[] m_netbuf;
   delete m_pFileTransfer;
   DeleteDC(m_hBitmapDC);
   if (m_hBitmap != NULL)
@@ -2029,8 +2110,8 @@ bool ClientConnection::ScrollScreen(int dx, int dy)
     m_vScrollPos += dy;
     RECT clirect;
     GetClientRect(m_hwnd, &clirect);
-    ScrollWindowEx(m_hwnd, -dx, -dy,
-                   NULL, &clirect, NULL, NULL,  SW_INVALIDATE);
+    ScrollWindowEx(m_hwnd, -dx, -dy, NULL, &clirect, NULL, NULL,
+                   SW_INVALIDATE);
     UpdateScrollbars();
     UpdateWindow(m_hwnd);
     return true;
@@ -2053,18 +2134,18 @@ LRESULT CALLBACK ClientConnection::ScrollProc(HWND hwnd, UINT iMsg,
       int dx = 0;
       int pos = HIWORD(wParam);
       switch (LOWORD(wParam)) {
-      case SB_LINEUP:
-        dx = - 2; break;
-      case SB_LINEDOWN:
-        dx = 2; break;
-      case SB_PAGEUP:
-        dx = _this->m_cliwidth * -1/4; break;
-      case SB_PAGEDOWN:
-        dx = _this->m_cliwidth * 1/4; break;
-      case SB_THUMBPOSITION:
-        dx = pos - _this->m_hScrollPos;
-      case SB_THUMBTRACK:
-        dx = pos - _this->m_hScrollPos;
+        case SB_LINEUP:
+          dx = -2;  break;
+        case SB_LINEDOWN:
+          dx = 2;  break;
+        case SB_PAGEUP:
+          dx = _this->m_cliwidth * -1 / 4;  break;
+        case SB_PAGEDOWN:
+          dx = _this->m_cliwidth * 1 / 4;  break;
+        case SB_THUMBPOSITION:
+          dx = pos - _this->m_hScrollPos;
+        case SB_THUMBTRACK:
+          dx = pos - _this->m_hScrollPos;
       }
       if (!_this->m_opts.m_FitWindow)
         _this->ScrollScreen(dx, 0);
@@ -2076,13 +2157,13 @@ LRESULT CALLBACK ClientConnection::ScrollProc(HWND hwnd, UINT iMsg,
       int pos = HIWORD(wParam);
       switch (LOWORD(wParam)) {
         case SB_LINEUP:
-          dy =  - 2; break;
+          dy = -2;  break;
         case SB_LINEDOWN:
-          dy = 2; break;
+          dy = 2;  break;
         case SB_PAGEUP:
-          dy =  _this->m_cliheight * -1/4; break;
+          dy = _this->m_cliheight * -1 / 4;  break;
         case SB_PAGEDOWN:
-          dy = _this->m_cliheight * 1/4; break;
+          dy = _this->m_cliheight * 1 / 4;  break;
         case SB_THUMBPOSITION:
           dy = pos - _this->m_vScrollPos;
         case SB_THUMBTRACK:
@@ -2200,13 +2281,13 @@ LRESULT CALLBACK ClientConnection::WndProc1(HWND hwnd, UINT iMsg,
           SendMessage(hwnd, WM_CLOSE, 0, 0);
           return 0;
         case ID_TOOLBAR:
-          if (GetMenuState(GetSystemMenu(_this->m_hwnd1, FALSE),
-                           ID_TOOLBAR, MF_BYCOMMAND) == MF_CHECKED) {
-            CheckMenuItem(GetSystemMenu(_this->m_hwnd1, FALSE),
-              ID_TOOLBAR, MF_BYCOMMAND | MF_UNCHECKED);
+          if (GetMenuState(GetSystemMenu(_this->m_hwnd1, FALSE), ID_TOOLBAR,
+                           MF_BYCOMMAND) == MF_CHECKED) {
+            CheckMenuItem(GetSystemMenu(_this->m_hwnd1, FALSE), ID_TOOLBAR,
+                          MF_BYCOMMAND | MF_UNCHECKED);
           } else {
-            CheckMenuItem(GetSystemMenu(_this->m_hwnd1, FALSE),
-                          ID_TOOLBAR, MF_BYCOMMAND | MF_CHECKED);
+            CheckMenuItem(GetSystemMenu(_this->m_hwnd1, FALSE), ID_TOOLBAR,
+                          MF_BYCOMMAND | MF_CHECKED);
           }
           _this->SizeWindow(false);
           return 0;
@@ -2233,9 +2314,9 @@ LRESULT CALLBACK ClientConnection::WndProc1(HWND hwnd, UINT iMsg,
               _this->PositionChildWindow();
             } else {
               if (prev_scale_num != _this->m_opts.m_scale_num ||
-                prev_scale_den != _this->m_opts.m_scale_den ||
-                prev_span != _this->m_opts.m_Span ||
-                prev_desktopSize != _this->m_opts.m_desktopSize) {
+                  prev_scale_den != _this->m_opts.m_scale_den ||
+                  prev_span != _this->m_opts.m_Span ||
+                  prev_desktopSize != _this->m_opts.m_desktopSize) {
                 bool defaultSize = false;
                 if (prev_desktopSize.mode != SIZE_AUTO &&
                     _this->m_opts.m_desktopSize.mode == SIZE_AUTO &&
@@ -2267,6 +2348,10 @@ LRESULT CALLBACK ClientConnection::WndProc1(HWND hwnd, UINT iMsg,
             _this->m_opts.SaveOpt(_this->m_opts.m_display,
                                   KEY_VNCVIEWER_HISTORY);
           _this->EnableFullControlOptions();
+          _this->EnableZoomOptions();
+          hotkeys.Init(_this->m_opts.m_FSAltEnter,
+                       _this->m_opts.m_desktopSize.mode != SIZE_AUTO &&
+                       !_this->m_opts.m_FitWindow);
           _this->SetWindowTitle();
           if (SetForegroundWindow(_this->m_opts.m_hParent) != 0) return 0;
           COND_REGRAB_KEYBOARD
@@ -2310,6 +2395,70 @@ LRESULT CALLBACK ClientConnection::WndProc1(HWND hwnd, UINT iMsg,
           else
             _this->GrabKeyboard();
           return 0;
+        case ID_TOGGLE_VIEWONLY:
+          _this->m_opts.m_ViewOnly = !_this->m_opts.m_ViewOnly;
+          CheckMenuItem(GetSystemMenu(_this->m_hwnd1, FALSE),
+                        ID_TOGGLE_VIEWONLY,
+                        MF_BYCOMMAND | (_this->m_opts.m_ViewOnly ?
+                                        MF_CHECKED : MF_UNCHECKED));
+          _this->EnableFullControlOptions();
+          return 0;
+        case ID_TOGGLE_CLIPBOARD:
+          _this->m_opts.m_DisableClipboard = !_this->m_opts.m_DisableClipboard;
+          CheckMenuItem(GetSystemMenu(_this->m_hwnd1, FALSE),
+                        ID_TOGGLE_CLIPBOARD,
+                        MF_BYCOMMAND | (_this->m_opts.m_DisableClipboard ?
+                                        MF_UNCHECKED : MF_CHECKED));
+          return 0;
+        case ID_ZOOM_IN:
+          if (_this->m_opts.m_desktopSize.mode != SIZE_AUTO &&
+              !_this->m_opts.m_FitWindow) {
+            int sf = (_this->m_opts.m_scale_num * 100) /
+                     _this->m_opts.m_scale_den;
+            if (sf < 100)
+              sf = ((sf / 10) + 1) * 10;
+            else if (sf >= 100 && sf <= 200)
+              sf = ((sf / 25) + 1) * 25;
+            else
+              sf = ((sf / 50) + 1) * 50;
+            if (sf > 400) sf = 400;
+            _this->m_opts.m_scale_num = sf;
+            _this->m_opts.m_scale_den = 100;
+            _this->m_opts.m_scaling = (sf != 100);
+            _this->SizeWindow(true, true, false);
+            _this->SetWindowTitle();
+            InvalidateRect(_this->m_hwnd, NULL, FALSE);
+          }
+          return 0;
+        case ID_ZOOM_OUT:
+          if (_this->m_opts.m_desktopSize.mode != SIZE_AUTO &&
+              !_this->m_opts.m_FitWindow) {
+            int sf = (_this->m_opts.m_scale_num * 100) /
+                     _this->m_opts.m_scale_den;
+            if (sf <= 100)
+              sf = ((sf / 10) - 1) * 10;
+            else if (sf >= 100 && sf <= 200)
+              sf = ((sf / 25) - 1) * 25;
+            else
+              sf = ((sf / 50) - 1) * 50;
+            if (sf < 10) sf = 10;
+            _this->m_opts.m_scale_num = sf;
+            _this->m_opts.m_scale_den = 100;
+            _this->m_opts.m_scaling = (sf != 100);
+            _this->SizeWindow(true, true, false);
+            _this->SetWindowTitle();
+            InvalidateRect(_this->m_hwnd, NULL, FALSE);
+          }
+          return 0;
+        case ID_ZOOM_100:
+          if (_this->m_opts.m_scaling) {
+            _this->m_opts.m_scale_num = 100;
+            _this->m_opts.m_scale_den = 100;
+            _this->SizeWindow(true, true, false);
+            _this->SetWindowTitle();
+            InvalidateRect(_this->m_hwnd, NULL, FALSE);
+          }
+          return 0;
         case ID_DEFAULT_WINDOW_SIZE:
           // Reset window geometry to default (taking into account spanning
           // option)
@@ -2338,6 +2487,12 @@ LRESULT CALLBACK ClientConnection::WndProc1(HWND hwnd, UINT iMsg,
           return 0;
         }
         case ID_CONN_SENDKEYDOWN:
+          KeyActionSpec kas;
+          kas.keycodes[0] = (CARD32)lParam;
+          kas.keycodes[1] = XK_VoidSymbol;
+          kas.releaseModifiers = 0;
+          if ((CARD32)lParam == XK_Super_L)
+            _this->pressedKeys[VK_LWIN] = kas;
           _this->SendKeyEvent((CARD32)lParam, true);
           return 0;
         case ID_CONN_SENDKEYUP:
@@ -2377,16 +2532,17 @@ LRESULT CALLBACK ClientConnection::WndProc1(HWND hwnd, UINT iMsg,
                           ID_CONN_CTLDOWN, MF_BYCOMMAND | MF_CHECKED);
             SendMessage(_this->m_hToolbar, TB_SETSTATE,
                         (WPARAM)ID_CONN_CTLDOWN,
-                        (LPARAM)MAKELONG(TBSTATE_CHECKED | TBSTATE_ENABLED, 0));
+                        (LPARAM)MAKELONG(TBSTATE_CHECKED | TBSTATE_ENABLED,
+                                         0));
             _this->SendKeyEvent(XK_Control_L, true);
           }
           return 0;
         case ID_CONN_ALTDOWN:
           if (GetMenuState(GetSystemMenu(_this->m_hwnd1, FALSE),
-                          ID_CONN_ALTDOWN, MF_BYCOMMAND) == MF_CHECKED) {
+                           ID_CONN_ALTDOWN, MF_BYCOMMAND) == MF_CHECKED) {
             _this->SendKeyEvent(XK_Alt_L, false);
             CheckMenuItem(GetSystemMenu(_this->m_hwnd1, FALSE),
-              ID_CONN_ALTDOWN, MF_BYCOMMAND | MF_UNCHECKED);
+                          ID_CONN_ALTDOWN, MF_BYCOMMAND | MF_UNCHECKED);
             SendMessage(_this->m_hToolbar, TB_SETSTATE,
                         (WPARAM)ID_CONN_ALTDOWN,
                         (LPARAM)MAKELONG(TBSTATE_ENABLED, 0));
@@ -2395,7 +2551,8 @@ LRESULT CALLBACK ClientConnection::WndProc1(HWND hwnd, UINT iMsg,
                           ID_CONN_ALTDOWN, MF_BYCOMMAND | MF_CHECKED);
             SendMessage(_this->m_hToolbar, TB_SETSTATE,
                         (WPARAM)ID_CONN_ALTDOWN,
-                        (LPARAM)MAKELONG(TBSTATE_CHECKED | TBSTATE_ENABLED, 0));
+                        (LPARAM)MAKELONG(TBSTATE_CHECKED | TBSTATE_ENABLED,
+                                         0));
             _this->SendKeyEvent(XK_Alt_L, true);
           }
           return 0;
@@ -2413,6 +2570,17 @@ LRESULT CALLBACK ClientConnection::WndProc1(HWND hwnd, UINT iMsg,
       return 0;
     case WM_SIZE:
       _this->PositionChildWindow();
+      return 0;
+    case WM_MOVE:
+      if (_this->m_checkLayout) {
+        RECT clientRect;
+        _this->GetActualClientRect(&clientRect);
+        int w = WidthOf(clientRect), h = HeightOf(clientRect);
+        ScreenSet layout = _this->ComputeScreenLayout(w, h);
+        _this->m_checkLayout = false;
+        if (w >= 1 && h >= 1 && layout != _this->m_screenLayout)
+          _this->SendDesktopSize(w, h, layout);
+      }
       return 0;
     case WM_CLOSE:
       // Close the worker thread as well
@@ -2463,15 +2631,15 @@ LRESULT CALLBACK ClientConnection::WndProc1(HWND hwnd, UINT iMsg,
 }
 
 
-LRESULT CALLBACK ClientConnection::Proc(HWND hwnd, UINT iMsg,
-                                        WPARAM wParam, LPARAM lParam)
+LRESULT CALLBACK ClientConnection::Proc(HWND hwnd, UINT iMsg, WPARAM wParam,
+                                        LPARAM lParam)
 {
   return DefWindowProc(hwnd, iMsg, wParam, lParam);
 }
 
 
-LRESULT CALLBACK ClientConnection::WndProc(HWND hwnd, UINT iMsg,
-                                           WPARAM wParam, LPARAM lParam)
+LRESULT CALLBACK ClientConnection::WndProc(HWND hwnd, UINT iMsg, WPARAM wParam,
+                                           LPARAM lParam)
 {
   // This is a static method, so we don't know which instantiation we're
   // dealing with.  But we've stored a 'pseudo-this' in the window data.
@@ -2537,8 +2705,7 @@ LRESULT CALLBACK ClientConnection::WndProc(HWND hwnd, UINT iMsg,
         if (WindowFromPoint(coords) != hwnd ||
             !ScreenToClient(hwnd, &coords) ||
             coords.x < 0 || coords.y < 0 ||
-            coords.x >= _this->m_cliwidth ||
-            coords.y >= _this->m_cliheight)
+            coords.x >= _this->m_cliwidth || coords.y >= _this->m_cliheight)
           return 0;
       } else {
         // Make sure the high-order word in wParam is zero.
@@ -2563,35 +2730,35 @@ LRESULT CALLBACK ClientConnection::WndProc(HWND hwnd, UINT iMsg,
     {
       if (!_this->m_running) return 0;
       if (_this->m_opts.m_ViewOnly) return 0;
-      bool down = (((DWORD) lParam & 0x80000000l) == 0);
-      if ((int) wParam == 0x11) {
+      bool down = (((DWORD)lParam & 0x80000000l) == 0);
+      if ((int)wParam == 0x11) {
         if (!down) {
-          CheckMenuItem(GetSystemMenu(_this->m_hwnd1, FALSE),
-                        ID_CONN_CTLDOWN, MF_BYCOMMAND | MF_UNCHECKED);
+          CheckMenuItem(GetSystemMenu(_this->m_hwnd1, FALSE), ID_CONN_CTLDOWN,
+                        MF_BYCOMMAND | MF_UNCHECKED);
           SendMessage(_this->m_hToolbar, TB_SETSTATE, (WPARAM)ID_CONN_CTLDOWN,
                       (LPARAM)MAKELONG(TBSTATE_ENABLED, 0));
         } else {
-          CheckMenuItem(GetSystemMenu(_this->m_hwnd1, FALSE),
-                        ID_CONN_CTLDOWN, MF_BYCOMMAND | MF_CHECKED);
+          CheckMenuItem(GetSystemMenu(_this->m_hwnd1, FALSE), ID_CONN_CTLDOWN,
+                        MF_BYCOMMAND | MF_CHECKED);
           SendMessage(_this->m_hToolbar, TB_SETSTATE, (WPARAM)ID_CONN_CTLDOWN,
                       (LPARAM)MAKELONG(TBSTATE_CHECKED | TBSTATE_ENABLED, 0));
         }
       }
-      if ((int) wParam == 0x12) {
+      if ((int)wParam == 0x12) {
         if (!down) {
-          CheckMenuItem(GetSystemMenu(_this->m_hwnd1, FALSE),
-                        ID_CONN_ALTDOWN, MF_BYCOMMAND | MF_UNCHECKED);
+          CheckMenuItem(GetSystemMenu(_this->m_hwnd1, FALSE), ID_CONN_ALTDOWN,
+                        MF_BYCOMMAND | MF_UNCHECKED);
           SendMessage(_this->m_hToolbar, TB_SETSTATE, (WPARAM)ID_CONN_ALTDOWN,
                       (LPARAM)MAKELONG(TBSTATE_ENABLED, 0));
         } else {
-          CheckMenuItem(GetSystemMenu(_this->m_hwnd1, FALSE),
-                        ID_CONN_ALTDOWN, MF_BYCOMMAND | MF_CHECKED);
+          CheckMenuItem(GetSystemMenu(_this->m_hwnd1, FALSE), ID_CONN_ALTDOWN,
+                        MF_BYCOMMAND | MF_CHECKED);
           SendMessage(_this->m_hToolbar, TB_SETSTATE, (WPARAM)ID_CONN_ALTDOWN,
                       (LPARAM)MAKELONG(TBSTATE_CHECKED | TBSTATE_ENABLED, 0));
         }
       }
 
-      _this->ProcessKeyEvent((int) wParam, (DWORD) lParam);
+      _this->ProcessKeyEvent((int)wParam, (DWORD)lParam);
       return 0;
     }
     case WM_CHAR:
@@ -2623,6 +2790,7 @@ LRESULT CALLBACK ClientConnection::WndProc(HWND hwnd, UINT iMsg,
                      SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
       }
       vnclog.Print(6, "Losing focus - cancelling modifiers\n");
+      _this->SwitchOffKeys();
       return 0;
     }
     case WM_QUERYNEWPALETTE:
@@ -2640,8 +2808,7 @@ LRESULT CALLBACK ClientConnection::WndProc(HWND hwnd, UINT iMsg,
     case WM_PALETTECHANGED:
       // If this application did not change the palette, select
       // and realize this application's palette
-      if ((HWND)wParam != hwnd)
-      {
+      if ((HWND)wParam != hwnd) {
         // Need the window's DC for SelectPalette/RealizePalette
         TempDC hDC(hwnd);
         PaletteSelector p(hDC, _this->m_hPalette);
@@ -2671,8 +2838,8 @@ LRESULT CALLBACK ClientConnection::WndProc(HWND hwnd, UINT iMsg,
     case WM_CHANGECBCHAIN:
     {
       // The clipboard chain is changing
-      HWND hWndRemove = (HWND) wParam;     // handle of window being removed
-      HWND hWndNext = (HWND) lParam;       // handle of next window in chain
+      HWND hWndRemove = (HWND)wParam;      // handle of window being removed
+      HWND hWndNext = (HWND)lParam;        // handle of next window in chain
       // If next window is closing, update our pointer.
       if (hWndRemove == _this->m_hwndNextViewer)
         _this->m_hwndNextViewer = hWndNext;
@@ -2686,7 +2853,7 @@ LRESULT CALLBACK ClientConnection::WndProc(HWND hwnd, UINT iMsg,
     case WT_PACKET:
     {
       PACKET pkt;
-      if(gpWTPacket((HCTX)lParam, (UINT)wParam, &pkt)) {
+      if (gpWTPacket((HCTX)lParam, (UINT)wParam, &pkt)) {
         ExtInputEvent e;
 
         if (pkt.pkChanged & PK_X || pkt.pkChanged & PK_Y ||
@@ -2702,7 +2869,6 @@ LRESULT CALLBACK ClientConnection::WndProc(HWND hwnd, UINT iMsg,
                                   e.valuators[4]);
           _this->SendGIIEvent(pkt.pkCursor, e);
         }
-
 
         if (_this->m_wacomButtonMask != pkt.pkButtons &&
             pkt.pkChanged & PK_BUTTONS) {
@@ -2778,8 +2944,7 @@ void ClientConnection::ProcessPointerEvent(int x, int y, DWORD keyflags,
       KillTimer(m_hwnd, m_emulate3ButtonsTimer);
       m_waitingOnEmulateTimer = false;
     } else if (m_emulatingMiddleButton) {
-      if ((keyflags & MK_LBUTTON) == 0 && (keyflags & MK_RBUTTON) == 0)
-      {
+      if ((keyflags & MK_LBUTTON) == 0 && (keyflags & MK_RBUTTON) == 0) {
         // We finish emulation only when both buttons come back up.
         m_emulatingMiddleButton = false;
         SubProcessPointerEvent(x, y, keyflags);
@@ -2930,8 +3095,7 @@ inline void ClientConnection::ProcessKeyEvent(int virtkey, DWORD keyData)
   try {
 
     if (!down) {
-      std::map<UINT, KeyActionSpec>::iterator iter =
-        pressedKeys.find(virtkey);
+      std::map<UINT, KeyActionSpec>::iterator iter = pressedKeys.find(virtkey);
 
       if (iter == pressedKeys.end()) {
         vnclog.Print(4, "Unexpected release of key code %d\n", virtkey);
@@ -3015,16 +3179,16 @@ inline void ClientConnection::SendKeyEvent(CARD32 key, bool down)
 inline void ClientConnection::GrabKeyboard(void)
 {
   LowLevelHook::Activate(m_hwnd1);
-  CheckMenuItem(GetSystemMenu(m_hwnd1, FALSE),
-                ID_TOGGLE_GRAB, MF_BYCOMMAND | MF_CHECKED);
+  CheckMenuItem(GetSystemMenu(m_hwnd1, FALSE), ID_TOGGLE_GRAB,
+                MF_BYCOMMAND | MF_CHECKED);
 }
 
 
 inline void ClientConnection::UngrabKeyboard(void)
 {
   LowLevelHook::Deactivate();
-  CheckMenuItem(GetSystemMenu(m_hwnd1, FALSE),
-                ID_TOGGLE_GRAB, MF_BYCOMMAND | MF_UNCHECKED);
+  CheckMenuItem(GetSystemMenu(m_hwnd1, FALSE), ID_TOGGLE_GRAB,
+                MF_BYCOMMAND | MF_UNCHECKED);
 }
 
 
@@ -3040,6 +3204,7 @@ void ClientConnection::SendClientCutText(char *str, size_t len)
 
   cct.type = rfbClientCutText;
   cct.length = Swap32IfLE(len);
+  omni_mutex_lock l(m_writeMutex);  // Ensure back-to-back writes are grouped
   WriteExact((char *)&cct, sz_rfbClientCutTextMsg);
   WriteExact(str, (int)len);
   vnclog.Print(6, "Sent %d bytes of clipboard\n", len);
@@ -3109,14 +3274,13 @@ inline void ClientConnection::DoBlit()
                     SRCCOPY)) {
       vnclog.Print(0, "Blit error %d\n", GetLastError());
       // throw ErrorException("Error in blit!\n");
-    };
+    }
   } else {
     if (!BitBlt(hdc, ps.rcPaint.left, ps.rcPaint.top,
                 ps.rcPaint.right - ps.rcPaint.left,
                 ps.rcPaint.bottom - ps.rcPaint.top, m_hBitmapDC,
                 ps.rcPaint.left + m_hScrollPos,
-                ps.rcPaint.top + m_vScrollPos, SRCCOPY))
-    {
+                ps.rcPaint.top + m_vScrollPos, SRCCOPY)) {
       vnclog.Print(0, "Blit error %d\n", GetLastError());
       // throw ErrorException("Error in blit!\n");
     }
@@ -3144,7 +3308,7 @@ inline void ClientConnection::UpdateScrollbars()
   scri.fMask = SIF_ALL | SIF_DISABLENOSCROLL;
   scri.nMin = 0;
   scri.nMax = m_hScrollMax;
-  scri.nPage= m_cliwidth;
+  scri.nPage = m_cliwidth;
   scri.nPos = m_hScrollPos;
 
   if (setInfo)
@@ -3154,7 +3318,7 @@ inline void ClientConnection::UpdateScrollbars()
   scri.fMask = SIF_ALL | SIF_DISABLENOSCROLL;
   scri.nMin = 0;
   scri.nMax = m_vScrollMax;
-  scri.nPage= m_cliheight;
+  scri.nPage = m_cliheight;
   scri.nPos = m_vScrollPos;
 
   if (setInfo)
@@ -3188,7 +3352,8 @@ void ClientConnection::ShowConnInfo()
 //  They finish the initialisation, then chiefly read data from the server.
 // ********************************************************************
 
-void* ClientConnection::run_undetached(void* arg) {
+void *ClientConnection::run_undetached(void *arg)
+{
 
   vnclog.Print(9, "Update-processing thread started\n");
 
@@ -3288,8 +3453,8 @@ void* ClientConnection::run_undetached(void* arg) {
     if (!m_bKillThread) {
       PostMessage(m_hwnd1, WM_CLOSE, 1, 0);
       e.Report();
-    }
-    else PostMessage(m_hwnd1, WM_CLOSE, 0, 0);
+    } else
+      PostMessage(m_hwnd1, WM_CLOSE, 0, 0);
   } catch (ErrorException &e) {
     m_running = false;
     e.Report();
@@ -3337,15 +3502,15 @@ inline void ClientConnection::SendFramebufferUpdateRequest(int x, int y,
 
 inline void ClientConnection::SendIncrementalFramebufferUpdateRequest()
 {
-    SendFramebufferUpdateRequest(0, 0, m_si.framebufferWidth,
-                                 m_si.framebufferHeight, true);
+  SendFramebufferUpdateRequest(0, 0, m_si.framebufferWidth,
+                               m_si.framebufferHeight, true);
 }
 
 
 inline void ClientConnection::SendFullFramebufferUpdateRequest()
 {
-    SendFramebufferUpdateRequest(0, 0, m_si.framebufferWidth,
-                                 m_si.framebufferHeight, false);
+  SendFramebufferUpdateRequest(0, 0, m_si.framebufferWidth,
+                               m_si.framebufferHeight, false);
 }
 
 
@@ -3400,7 +3565,7 @@ void ClientConnection::ReadScreenUpdate()
       if (m_opts.m_benchFile) tBlitStart = getTime();
 
       while (m_opts.m_DoubleBuffer && list != NULL) {
-        rfbFramebufferUpdateRectHeader* r1;
+        rfbFramebufferUpdateRectHeader *r1;
         node = list;
         r1 = &node->region;
 
@@ -3412,12 +3577,11 @@ void ClientConnection::ReadScreenUpdate()
             omni_mutex_lock l(m_bitmapdcMutex);
             ObjectSelector b(m_hBitmapDC, m_hBitmap);
             PaletteSelector p(m_hBitmapDC, m_hPalette);
-            FillSolidRect(r1->r.x, r1->r.y, r1->r.w, r1->r.h,
-                          node->fillColor);
+            FillSolidRect(r1->r.x, r1->r.y, r1->r.w, r1->r.h, node->fillColor);
           }
           RECT rect;
           SetRect(&rect, r1->r.x, r1->r.y,
-            r1->r.x + r1->r.w, r1->r.y + r1->r.h);
+                  r1->r.x + r1->r.w, r1->r.y + r1->r.h);
           InvalidateScreenRect(&rect);
         }
         list = list->next;
@@ -3520,24 +3684,21 @@ void ClientConnection::ReadScreenUpdate()
     if (m_opts.m_benchFile) tBlitStart = getTime();
 
     while (list != NULL) {
-      rfbFramebufferUpdateRectHeader* r1;
+      rfbFramebufferUpdateRectHeader *r1;
       node = list;
       r1 = &node->region;
 
-      if (r1->encoding == rfbEncodingTight ||
-          r1->encoding == rfbEncodingRaw ||
+      if (r1->encoding == rfbEncodingTight || r1->encoding == rfbEncodingRaw ||
           r1->encoding == rfbEncodingHextile) {
         SoftCursorLockArea(r1->r.x, r1->r.y, r1->r.w, r1->r.h);
         if (node->isFill) {
           omni_mutex_lock l(m_bitmapdcMutex);
           ObjectSelector b(m_hBitmapDC, m_hBitmap);
           PaletteSelector p(m_hBitmapDC, m_hPalette);
-          FillSolidRect(r1->r.x, r1->r.y, r1->r.w, r1->r.h,
-                        node->fillColor);
+          FillSolidRect(r1->r.x, r1->r.y, r1->r.w, r1->r.h, node->fillColor);
         }
         RECT rect;
-        SetRect(&rect, r1->r.x, r1->r.y,
-                r1->r.x + r1->r.w, r1->r.y + r1->r.h);
+        SetRect(&rect, r1->r.x, r1->r.y, r1->r.x + r1->r.w, r1->r.y + r1->r.h);
         InvalidateScreenRect(&rect);
       }
       list = list->next;
@@ -3580,8 +3741,7 @@ void ClientConnection::ReadScreenUpdate()
 
 void ClientConnection::SetDormant(bool newstate)
 {
-  vnclog.Print(5, "%s dormant mode\n",
-               newstate ? "Entering" : "Leaving");
+  vnclog.Print(5, "%s dormant mode\n", newstate ? "Entering" : "Leaving");
   m_dormant = newstate;
   if (!m_dormant)
     SendIncrementalFramebufferUpdateRequest();
@@ -3671,7 +3831,7 @@ void ClientConnection::ReadExact(char *inbuf, int wanted)
   omni_mutex_lock l(m_readMutex);
 
   int offset = 0;
-    vnclog.Print(10, "  reading %d bytes\n", wanted);
+  vnclog.Print(10, "  reading %d bytes\n", wanted);
 
   while (wanted > 0) {
 
@@ -3722,9 +3882,9 @@ inline void ClientConnection::WriteExact(char *buf, int bytes)
       int err = GetLastError();
       FormatMessage(
         FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM |
-          FORMAT_MESSAGE_IGNORE_INSERTS, NULL,
-        err, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), // Default language
-        (LPTSTR)&lpMsgBuf, 0, NULL); // Process any inserts in lpMsgBuf.
+          FORMAT_MESSAGE_IGNORE_INSERTS, NULL, err,
+        MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),  // Default language
+        (LPTSTR)&lpMsgBuf, 0, NULL);  // Process any inserts in lpMsgBuf.
       vnclog.Print(1, "Socket error %d: %s\n", err, lpMsgBuf);
       LocalFree(lpMsgBuf);
       m_running = false;
@@ -3779,8 +3939,7 @@ void ClientConnection::CheckBufferSize(size_t bufsize)
     delete[] m_netbuf;
   m_netbuf = newbuf;
   m_netbufsize = bufsize + 256;
-  vnclog.Print(4, "Buffer size expanded to %u\n",
-               (unsigned int)m_netbufsize);
+  vnclog.Print(4, "Buffer size expanded to %u\n", (unsigned int)m_netbufsize);
 }
 
 
@@ -3816,7 +3975,8 @@ void ClientConnection::CheckZlibBufferSize(size_t bufsize)
 
 // Invalidate a screen rectangle, respecting scaling set by user.
 
-void ClientConnection::InvalidateScreenRect(const RECT *pRect) {
+void ClientConnection::InvalidateScreenRect(const RECT *pRect)
+{
   RECT rect;
 
   // If we're scaling, we transform the coordinates of the rectangle
@@ -3829,8 +3989,8 @@ void ClientConnection::InvalidateScreenRect(const RECT *pRect) {
     int d = m_opts.m_scale_den;
     int left   = (pRect->left / d) * d;
     int top    = (pRect->top  / d) * d;
-    int right  = (pRect->right  + d - 1) / d * d; // round up
-    int bottom = (pRect->bottom + d - 1) / d * d; // round up
+    int right  = (pRect->right  + d - 1) / d * d;  // round up
+    int bottom = (pRect->bottom + d - 1) / d * d;  // round up
 
     // Then we scale the rectangle, which should now give whole numbers.
     rect.left   = (left   * n / d) - m_hScrollPos;
@@ -3868,8 +4028,7 @@ void ClientConnection::ReadNewFBSize(rfbFramebufferUpdateRectHeader *pfburh)
   CreateLocalFramebuffer();
 
   if (m_opts.m_desktopSize.mode == SIZE_AUTO &&
-      m_autoResizeWidth == pfburh->r.w &&
-      m_autoResizeHeight == pfburh->r.h) {
+      m_autoResizeWidth == pfburh->r.w && m_autoResizeHeight == pfburh->r.h) {
     RECT fullwinrect;
     SetRect(&fullwinrect, 0, 0, m_si.framebufferWidth, m_si.framebufferHeight);
     PositionWindow(fullwinrect, false, true);
@@ -3883,11 +4042,6 @@ void ClientConnection::ReadNewFBSize(rfbFramebufferUpdateRectHeader *pfburh)
   RealiseFullScreenMode(true);
   if (InFullScreenMode())
     m_pendingServerResize = false;
-
-  if (m_opts.m_desktopSize.mode == SIZE_MANUAL && !m_firstUpdate) {
-    m_opts.m_desktopSize.width = pfburh->r.w;
-    m_opts.m_desktopSize.height = pfburh->r.h;
-  }
 }
 
 
@@ -3913,7 +4067,24 @@ void ClientConnection::ReadExtendedDesktopSize(
 
     layout.add_screen(Screen(screen.id, screen.x, screen.y, screen.w, screen.h,
                              screen.flags));
+
+    // Normally, the TurboVNC Viewer will not create a multi-screen viewer
+    // window that extends beyond the unshared boundary of any physical screen
+    // on the client.  This ensures that the window position and scrollbars
+    // will be correct, regardless of the monitor layout.  However, if
+    // automatic desktop resizing is enabled and the server supports Xinerama,
+    // then the full-screen multi-screen viewer window should extend to the
+    // bounding box of all physical screens, even if it extends beyond the
+    // unshared boundary of some of them.  This ensures correct behavior if the
+    // screens have different resolutions or are offset.  TurboVNC 2.0.x-2.1.x
+    // supported the RFB extended desktop size message but not Xinerama, and
+    // those versions also sent a screen ID of 0.  Thus, we do not assume that
+    // the server supports Xinerama unless it sends a multi-screen layout or a
+    // non-zero screen ID.
+    if (i > 0 || screen.id != 0) m_serverXinerama = true;
   }
+
+  layout.debugPrint("LAYOUT RECEIVED");
 
   int reason = pfburh->r.x, result = pfburh->r.y;
 
@@ -3922,7 +4093,7 @@ void ClientConnection::ReadExtendedDesktopSize(
     return;
   }
 
-  if (!layout.validate(pfburh->r.w, pfburh->r.h))
+  if (!layout.validate(pfburh->r.w, pfburh->r.h, true))
     vnclog.Print(-1, "Server sent us an invalid screen layout\n");
 
   m_supportsSetDesktopSize = true;
@@ -3931,42 +4102,85 @@ void ClientConnection::ReadExtendedDesktopSize(
   ReadNewFBSize(pfburh);
 }
 
+ScreenSet ClientConnection::ComputeScreenLayout(int width, int height)
+{
+  ScreenSet layout;
+  char env[256];  size_t envlen;
+
+  if (getenv_s(&envlen, env, 256, "TVNC_SINGLESCREEN") == 0 &&
+      !strcmp(env, "1")) {
+    layout = m_screenLayout;
+
+    if (layout.num_screens() == 0)
+      layout.add_screen(Screen());
+    else if (layout.num_screens() != 1) {
+      ScreenSet::iterator iter;
+      while (true) {
+        iter = layout.begin();
+        ++iter;
+
+        if (iter == layout.end())
+          break;
+
+        layout.remove_screen(iter->id);
+      }
+    }
+
+    layout.begin()->dimensions.left = 0;
+    layout.begin()->dimensions.top = 0;
+    layout.begin()->dimensions.right = width;
+    layout.begin()->dimensions.bottom = height;
+  } else {
+    RECT workArea, screenArea;
+    layout = GetFullScreenMetrics(screenArea, workArea, m_opts.m_Span, false);
+    layout.assignIDs(m_screenLayout);
+  }
+
+  return layout;
+}
 
 void ClientConnection::SendDesktopSize(int width, int height)
 {
-  ScreenSet::iterator iter;
   ScreenSet layout;
 
   if (!m_supportsSetDesktopSize)
     return;
 
-  layout = m_screenLayout;
-
-  if (layout.num_screens() == 0)
-    layout.add_screen(Screen());
-  else if (layout.num_screens() != 1) {
-
-    while (true) {
-      iter = layout.begin();
-      ++iter;
-
-      if (iter == layout.end())
-        break;
-
-      layout.remove_screen(iter->id);
+  if (m_opts.m_desktopSize.mode == SIZE_AUTO) {
+    layout = ComputeScreenLayout(width, height);
+  } else {
+    if (m_opts.m_desktopSize.mode != SIZE_MANUAL ||
+        m_opts.m_desktopSize.layout.num_screens() < 1) {
+      vnclog.Print(-1, "ERROR: Unexpected desktop size configuration");
+      return;
     }
+    layout = m_opts.m_desktopSize.layout;
+    // Map client screens to server screen IDs in the server's preferred order.
+    // This allows us to control the server's screen order from the client.
+    layout.assignIDs(m_screenLayout);
   }
 
-  layout.begin()->dimensions.left = 0;
-  layout.begin()->dimensions.top = 0;
-  layout.begin()->dimensions.right = width;
-  layout.begin()->dimensions.bottom = height;
+  SendDesktopSize(width, height, layout);
+}
+
+void ClientConnection::SendDesktopSize(int width, int height, ScreenSet layout)
+{
+  ScreenSet::const_iterator iter;
+
+  if (!m_supportsSetDesktopSize)
+    return;
+
+  if (!layout.validate(width, height, true)) {
+    vnclog.Print(-1, "Invalid screen layout\n");
+    return;
+  }
 
   rfbSetDesktopSizeMsg msg;
   msg.type = rfbSetDesktopSize;
   msg.w = Swap16IfLE(width);
   msg.h = Swap16IfLE(height);
   msg.numScreens = layout.num_screens();
+  omni_mutex_lock l(m_writeMutex);  // Ensure back-to-back writes are grouped
   WriteExact((char *)&msg, sz_rfbSetDesktopSizeMsg);
 
   for (iter = layout.begin(); iter != layout.end(); ++iter) {
@@ -3974,11 +4188,13 @@ void ClientConnection::SendDesktopSize(int width, int height)
     screen.id = Swap32IfLE(iter->id);
     screen.x = Swap16IfLE(iter->dimensions.left);
     screen.y = Swap16IfLE(iter->dimensions.top);
-    screen.w = Swap16IfLE(iter->dimensions.right);
-    screen.h = Swap16IfLE(iter->dimensions.bottom);
+    screen.w = Swap16IfLE(WidthOf(iter->dimensions));
+    screen.h = Swap16IfLE(HeightOf(iter->dimensions));
     screen.flags = Swap32IfLE(iter->flags);
     WriteExact((char *)&screen, sz_rfbScreenDesc);
   }
+
+  layout.debugPrint("LAYOUT SENT");
 }
 
 
@@ -3991,13 +4207,15 @@ void ClientConnection::InitSetPixels(void)
   if (rs == 0 && gs == 8 && bs == 16) {
     if (srcps == 3) m_srcpf = FBX_RGB;
     else if (srcps == 4) m_srcpf = FBX_RGBA;
-  }
-  else if (rs == 16 && gs == 8 && bs == 0) {
+
+  } else if (rs == 16 && gs == 8 && bs == 0) {
     if (srcps == 3) m_srcpf = FBX_BGR;
     else if (srcps == 4) m_srcpf = FBX_BGRA;
-  }
-  else if (rs == 8 && gs == 16 && bs == 24 && srcps == 4) m_srcpf = FBX_ARGB;
-  else if (rs == 24 && gs == 16 && bs == 8 && srcps == 4) m_srcpf = FBX_ABGR;
+
+  } else if (rs == 8 && gs == 16 && bs == 24 && srcps == 4)
+    m_srcpf = FBX_ARGB;
+  else if (rs == 24 && gs == 16 && bs == 8 && srcps == 4)
+    m_srcpf = FBX_ABGR;
 
   if (m_srcpf < 0) {
     // Source is not 24-bit or 32-bit
@@ -4057,9 +4275,9 @@ void ClientConnection::SetPixelsFullConv##bpp(char *buffer, int x, int y,     \
     CARD##bpp *p = srcptr, *pfinal = &p[w];                                   \
     CARD32 *dstptr2 = dstptr;                                                 \
     for (; p < pfinal; p++, dstptr2++)                                        \
-      *dstptr2 = (((((CARD32)(*p) >> rs) & rm) * 255 / rm) << drs)            \
-               | (((((CARD32)(*p) >> gs) & gm) * 255 / gm) << dgs)            \
-               | (((((CARD32)(*p) >> bs) & bm) * 255 / bm) << dbs);           \
+      *dstptr2 = (((((CARD32)(*p) >> rs) & rm) * 255 / rm) << drs) |          \
+                 (((((CARD32)(*p) >> gs) & gm) * 255 / gm) << dgs) |          \
+                 (((((CARD32)(*p) >> bs) & bm) * 255 / bm) << dbs);           \
   }                                                                           \
 }
 
@@ -4075,8 +4293,8 @@ void ClientConnection::SetPixelsCopyLine(char *buffer, int x, int y, int srcw,
   if (x + w > fb.width) w = fb.width - x;
   if (y + h > fb.height) h = fb.height - y;
   if (w < 1 || h < 1) {
-    vnclog.Print(0, "Rectangle out of bounds for screen: %d,%d %dx%d\n",
-                 x, y, srcw, srch);
+    vnclog.Print(0, "Rectangle out of bounds for screen: %d,%d %dx%d\n", x, y,
+                 srcw, srch);
     return;
   }
 
@@ -4090,11 +4308,10 @@ void ClientConnection::SetPixelsCopyLine(char *buffer, int x, int y, int srcw,
   int srcaf = fbx_alphafirst[m_srcpf], dstaf = fbx_alphafirst[fb.format];
   if (srcaf) srcptr++;
   if (dstaf) dstptr++;
-  if (srcaf || dstaf)  wps--;
+  if (srcaf || dstaf) wps--;
 
-  for (; srcptr < srcfinal; srcptr += srcstride, dstptr += fb.pitch) {
+  for (; srcptr < srcfinal; srcptr += srcstride, dstptr += fb.pitch)
     memcpy(dstptr, srcptr, wps);
-  }
 }
 
 
@@ -4105,8 +4322,8 @@ void ClientConnection::SetPixelsCopyPixel(char *buffer, int x, int y, int srcw,
   if (x + w > fb.width) w = fb.width - x;
   if (y + h > fb.height) h = fb.height - y;
   if (w < 1 || h < 1) {
-    vnclog.Print(0, "Rectangle out of bounds for screen: %d,%d %dx%d\n",
-                 x, y, srcw, srch);
+    vnclog.Print(0, "Rectangle out of bounds for screen: %d,%d %dx%d\n", x, y,
+                 srcw, srch);
     return;
   }
 
@@ -4136,8 +4353,8 @@ void ClientConnection::SetPixelsSlow(char *buffer, int x, int y, int srcw,
   if (x + w > fb.width) w = fb.width - x;
   if (y + h > fb.height) h = fb.height - y;
   if (w < 1 || h < 1) {
-    vnclog.Print(0, "Rectangle out of bounds for screen: %d,%d %dx%d\n",
-                 x, y, srcw, srch);
+    vnclog.Print(0, "Rectangle out of bounds for screen: %d,%d %dx%d\n", x, y,
+                 srcw, srch);
     return;
   }
 
@@ -4150,7 +4367,8 @@ void ClientConnection::SetPixelsSlow(char *buffer, int x, int y, int srcw,
   for (; srcptr < srcfinal; srcptr += srcstride, dstptr += dststride) {
     char *srcptr2 = srcptr, *src2final = &srcptr2[srcps * w],
          *dstptr2 = dstptr;
-    for (; srcptr2 < src2final; srcptr2 += srcps, dstptr2 += fbx_ps[fb.format]) {
+    for (; srcptr2 < src2final; srcptr2 += srcps,
+         dstptr2 += fbx_ps[fb.format]) {
       dstptr2[2] = srcptr2[0];
       dstptr2[1] = srcptr2[1];
       dstptr2[0] = srcptr2[2];

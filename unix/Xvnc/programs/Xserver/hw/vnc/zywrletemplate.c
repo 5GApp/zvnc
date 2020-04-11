@@ -1,4 +1,3 @@
-
 /********************************************************************
  *                                                                  *
  * THIS FILE IS PART OF THE 'ZYWRLE' VNC CODEC SOURCE CODE.         *
@@ -9,7 +8,7 @@
  *                                                                  *
  * THE 'ZYWRLE' VNC CODEC SOURCE CODE IS (C) COPYRIGHT 2006         *
  * BY Hitachi Systems & Services, Ltd.                              *
- * (Noriaki Yamazaki, Research & Developement Center)               *                                                                 *
+ * (Noriaki Yamazaki, Research & Development Center)                *                                                                 *
  *                                                                  *
  ********************************************************************
 Redistribution and use in source and binary forms, with or without
@@ -302,7 +301,7 @@ static const signed char zywrleConv[4][256]={
 	0, 0, 0, 0, 0, 0, 0, 0,
 }
 };
-const static signed char* zywrleParam[3][3][3]={
+static const signed char* zywrleParam[3][3][3]={
 	{{zywrleConv[0],zywrleConv[2],zywrleConv[0]},{zywrleConv[0],zywrleConv[0],zywrleConv[0]},{zywrleConv[0],zywrleConv[0],zywrleConv[0]}},
 	{{zywrleConv[0],zywrleConv[3],zywrleConv[0]},{zywrleConv[1],zywrleConv[1],zywrleConv[1]},{zywrleConv[0],zywrleConv[0],zywrleConv[0]}},
 	{{zywrleConv[0],zywrleConv[3],zywrleConv[0]},{zywrleConv[2],zywrleConv[2],zywrleConv[2]},{zywrleConv[1],zywrleConv[1],zywrleConv[1]}},
@@ -352,7 +351,7 @@ static InlineX void Harr(signed char* pX0, signed char* pX1)
  In this method, H/L and X0/X1 is always same position.
  This lead us to more speed and less memory.
  Of cause, the result of both method is quite same
- because it's only difference that coefficient position.
+ because its only difference is that coefficient position.
 */
 static InlineX void WaveletLevel(int* data, int size, int l, int SkipPixel)
 {
@@ -750,7 +749,7 @@ static InlineX void ZYWRLE_YUVRGB(int* pBuf, PIXEL_T* data, int width, int heigh
 #endif
 
 #ifdef ZYWRLE_ENCODE
-PIXEL_T* ZYWRLE_ANALYZE(PIXEL_T* dst, PIXEL_T* src, int w, int h, int scanline, int level, int* pBuf) {
+static PIXEL_T* ZYWRLE_ANALYZE(PIXEL_T* dst, PIXEL_T* src, int w, int h, int scanline, int level, int* pBuf) {
 	int l;
 	int uw = w;
 	int uh = h;

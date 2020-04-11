@@ -1,13 +1,19 @@
 language: c
 
+branches:
+  except:
+    - /^[0-9]+\.[0-9]+$/
+    - /^[0-9]+\.[0-9]+\.[0-9]+/
+    - /^[0-9]+\.[0-9]+beta[0-9]/
+
 env:
   global:
-    - LJT_VERSION=1.5.1
+    - LJT_VERSION=2.0.4
     - LJT_URL=https://sourceforge.net/projects/libjpeg-turbo/files/$LJT_VERSION
     - LJT_LINUX_JNI=$LJT_URL/libjpeg-turbo-$LJT_VERSION-jws.zip
     - LJT_OSX_JNI=$LJT_URL/libjpeg-turbo-$LJT_VERSION-jws.zip
     - LJT_WINDOWS_JNI=$LJT_URL/libjpeg-turbo-$LJT_VERSION-jws.zip
-    - LJT_GPG_KEY="http://pgp.mit.edu/pks/lookup?op=get\&search=0x85C7044E033FDE16"
+    - LJT_GPG_KEY=https://sourceforge.net/projects/libjpeg-turbo/files/LJT-GPG-KEY
 
 matrix:
   include:
@@ -18,7 +24,7 @@ matrix:
         - docker
     - os: osx
       env: BUILD_OFFICIAL=1
-      osx_image: xcode7.3
+      osx_image: xcode8.3
     - os: linux
       dist: trusty
       compiler: gcc
@@ -48,17 +54,21 @@ before_install:
           unzip libjpeg-turbo-jws.zip &&
           rm libjpeg-turbo-jws.zip;
         fi &&
+        popd &&
+        mkdir ~/libjpeg-turbo-rpm &&
+        pushd ~/libjpeg-turbo-rpm &&
+        wget --no-check-certificate $LJT_URL/libjpeg-turbo-official-$LJT_VERSION.x86_64.rpm $LJT_URL/libjpeg-turbo-official-$LJT_VERSION.i386.rpm &&
         popd;
-      elif [ "$TRAVIS_OS_NAME" = "osx" ]; then
-        brew install md5sha1sum gpg;
       fi &&
-      git clone --depth=1 https://github.com/turbovnc/buildscripts.git ~/src/buildscripts &&
-      openssl aes-256-cbc -K $encrypted_c6f652756c51_key -iv $encrypted_c6f652756c51_iv -in ci/keys.enc -out ci/keys -d &&
-      tar xf ci/keys &&
-      rm ci/keys &&
-      mv ci/gpgsign ~/src/buildscripts &&
-      gpg --import ci/sign_vnc &&
-      rm ci/sign_vnc;
+      git clone --depth=1 https://github.com/turbovnc/buildscripts.git -b $TRAVIS_BRANCH ~/src/buildscripts &&
+      if [ -n "$encrypted_c6f652756c51_iv" ]; then
+        openssl aes-256-cbc -K $encrypted_c6f652756c51_key -iv $encrypted_c6f652756c51_iv -in ci/keys.enc -out ci/keys -d &&
+        tar xf ci/keys &&
+        rm ci/keys &&
+        mv ci/gpgsign ~/src/buildscripts &&
+        gpg --batch --import ci/sign_vnc &&
+        rm ci/sign_vnc;
+      fi
     fi
   - if [ "${BUILD_OFFICIAL:-}" == "" -a "$TRAVIS_OS_NAME" = "linux" ]; then
       pushd ~ &&
@@ -68,6 +78,9 @@ before_install:
     fi
   - if [ "$TRAVIS_OS_NAME" = "osx" ]; then
       pushd ~ &&
+      curl -LO https://raw.githubusercontent.com/GiovanniBussi/macports-ci/master/macports-ci &&
+      . ./macports-ci install &&
+      sudo /opt/local/bin/port -N install md5sha1sum &&
       wget --no-check-certificate $LJT_URL/libjpeg-turbo-$LJT_VERSION.dmg &&
       hdid libjpeg-turbo-$LJT_VERSION.dmg &&
       sudo installer -pkg /Volumes/libjpeg-turbo-$LJT_VERSION/libjpeg-turbo.pkg -target / &&
@@ -78,25 +91,23 @@ before_install:
 script:
   - if [ "${BUILD_OFFICIAL:-}" != "" ]; then
       mkdir -p ~/src/vnc.nightly &&
-      if [ -f .git/shallow ]; then
-        mv .git/shallow .git/shallow.bak;
-      fi &&
       if [ "$TRAVIS_OS_NAME" = "linux" ]; then
-        docker run -v $HOME/src/vnc.nightly:/root/src/vnc.nightly -v $HOME/src/buildscripts:/root/src/buildscripts -v $TRAVIS_BUILD_DIR:/root/src/turbovnc -v $HOME/.gnupg:/root/.gnupg -v $HOME/libjpeg-turbo-jni:/opt/libjpeg-turbo-jni -t dcommander/buildvnc:latest bash -c "rpm --import $LJT_GPG_KEY && wget --no-check-certificate $LJT_URL/libjpeg-turbo-official-$LJT_VERSION.x86_64.rpm $LJT_URL/libjpeg-turbo-official-$LJT_VERSION.i386.rpm && rpm -K *.rpm && rpm -i *.rpm && rpm --import http://pgp.mit.edu/pks/lookup?op=get\&search=0x727C3C5010DFDCB7 && ~/src/buildscripts/buildvnc -r file:///root/src/turbovnc $TRAVIS_BRANCH -v" &&
+        mkdir $HOME/rpmkeys &&
+        wget --no-check-certificate "$LJT_GPG_KEY" -O $HOME/rpmkeys/LJT-GPG-KEY &&
+        wget --no-check-certificate http://www.turbovnc.org/key/VGLPR-GPG-KEY -O $HOME/rpmkeys/VGLPR-GPG-KEY &&
+        docker run -v $HOME/src/vnc.nightly:/root/src/vnc.nightly -v $HOME/src/buildscripts:/root/src/buildscripts -v $TRAVIS_BUILD_DIR:/root/src/turbovnc -v $HOME/.gnupg:/root/.gnupg -v $HOME/libjpeg-turbo-jni:/opt/libjpeg-turbo-jni -v $HOME/libjpeg-turbo-rpm:/rpms -v $HOME/rpmkeys:/rpmkeys -t dcommander/buildvnc:latest bash -c "rpm --import /rpmkeys/LJT-GPG-KEY && rpm -K /rpms/*.rpm && rpm -i /rpms/*.rpm && rpm --import /rpmkeys/VGLPR-GPG-KEY && ~/src/buildscripts/buildvnc -d /root/src/turbovnc -v" &&
         sudo chown -R travis:travis ~/src/vnc.nightly;
       else
-        ~/src/buildscripts/buildvnc -r file://$TRAVIS_BUILD_DIR $TRAVIS_BRANCH -v;
+        ~/src/buildscripts/buildvnc -d $TRAVIS_BUILD_DIR -v;
       fi &&
-      mv ~/src/vnc.nightly/latest/log-$TRAVIS_OS_NAME.txt ~/src/vnc.nightly/latest/files/ &&
-      if [ -f .git/shallow.bak ]; then
-        mv .git/shallow.bak .git/shallow;
-      fi
+      mv ~/src/vnc.nightly/latest/log-$TRAVIS_OS_NAME.txt ~/src/vnc.nightly/latest/files/;
     fi
   - if [ "${BUILD_OFFICIAL:-}" == "" ]; then
       mkdir build &&
       pushd build &&
       cmake -G"Unix Makefiles" ${CMAKE_FLAGS} .. &&
-      make -j &&
+      export NUMCPUS=`grep -c '^processor' /proc/cpuinfo` &&
+      make -j$NUMCPUS --load-average=$NUMCPUS &&
       popd;
     fi
 

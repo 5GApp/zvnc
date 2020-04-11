@@ -1,4 +1,4 @@
-//  Copyright (C) 2010-2016 D. R. Commander. All Rights Reserved.
+//  Copyright (C) 2010-2017, 2020 D. R. Commander. All Rights Reserved.
 //  Copyright (C) 2005-2006 Sun Microsystems, Inc. All Rights Reserved.
 //  Copyright (C) 2004 Landmark Graphics Corporation. All Rights Reserved.
 //  Copyright (C) 1999 AT&T Laboratories Cambridge. All Rights Reserved.
@@ -58,8 +58,8 @@ VNCOptions::VNCOptions()
   m_LastEncoding = -1;
   m_SwapMouse = false;
   m_Emul3Buttons = false;
-  m_Emul3Timeout = 100; // milliseconds
-  m_Emul3Fuzz = 4;      // pixels away before emulation is cancelled
+  m_Emul3Timeout = 100;  // milliseconds
+  m_Emul3Fuzz = 4;       // pixels away before emulation is cancelled
   m_Shared = true;
   m_CU = true;
   m_DeiconifyOnBell = false;
@@ -119,7 +119,7 @@ VNCOptions::VNCOptions()
 }
 
 
-VNCOptions& VNCOptions::operator = (VNCOptions& s)
+VNCOptions &VNCOptions::operator = (VNCOptions &s)
 {
   for (int i = rfbEncodingRaw; i <= LASTENCODING; i++)
     m_UseEnc[i] = s.m_UseEnc[i];
@@ -202,15 +202,13 @@ VNCOptions::~VNCOptions()
 
 inline bool SwitchMatch(LPCTSTR arg, LPCTSTR swtch)
 {
-  return (arg[0] == '-' || arg[0] == '/') &&
-          (_stricmp(&arg[1], swtch) == 0);
+  return (arg[0] == '-' || arg[0] == '/') && (_stricmp(&arg[1], swtch) == 0);
 }
 
 
 static void ArgError(LPTSTR msg)
 {
-    MessageBox(NULL,  msg, "Argument error",
-               MB_OK | MB_TOPMOST | MB_ICONSTOP);
+  MessageBox(NULL,  msg, "Argument error", MB_OK | MB_TOPMOST | MB_ICONSTOP);
 }
 
 
@@ -279,22 +277,47 @@ bool VNCOptions::ParseDesktopSize(char *sizeString, DesktopSize &size)
     size.set(SIZE_SERVER, 0, 0);
     return true;
   } else {
-    for (int i = 0; i < (int)strlen(sizeString); i++) {
-      if ((sizeString[i] < '0' || sizeString[i] > '9') && sizeString[i] != 'x')
-        sizeString[i] = ' ';
+    ScreenSet layout;
+    char *src, *dest, *str = sizeString, *token;
+    int fbWidth = 0, fbHeight = 0;
+    int r = INT_MIN, b = INT_MIN;
+
+    src = dest = sizeString;
+    while (*src) {
+      if ((*src >= '0' && *src <= '9') || *src == 'x' || *src == '+' ||
+          *src == ',')
+        *dest++ = *src;
+      src++;
     }
-    long width, height;
-    char *ptr = strchr(sizeString, 'x');
-    if (!ptr || ptr == sizeString || strlen(ptr) < 2)
+    *dest = '\0';
+
+    while ((token = strsep(&str, ",")) != NULL) {
+      int x = 0, y = 0, w, h;
+
+      if ((sscanf_s(token, "%dx%d+%d+%d", &w, &h, &x, &y) != 4 &&
+           sscanf_s(token, "%dx%d", &w, &h) != 2) ||
+          x < 0 || y < 0 || w < 1 || h < 1)
+        return false;
+
+      if (x >= 65535 || y >= 65535) continue;
+      if (x + w > 65535) w = 65535 - x;
+      if (y + h > 65535) h = 65535 - y;
+
+      layout.add_screen(Screen(0, x, y, w, h, 0));
+
+      if (x + w > r) r = x + w;
+      if (y + h > b) b = y + h;
+    }
+
+    fbWidth = r;
+    fbHeight = b;
+
+    if (!layout.validate(fbWidth, fbHeight, false))
       return false;
-    width = strtol(sizeString, NULL, 10);
-    height = strtol(ptr + 1, NULL, 10);
-    if (width >= 1 && height >= 1) {
-      size.set(SIZE_MANUAL, width, height);
-      return true;
-    }
+
+    size.set(SIZE_MANUAL, fbWidth, fbHeight, layout);
+    return true;
   }
-  return false;
 }
 
 
@@ -323,7 +346,7 @@ void VNCOptions::SetFromCommandLine(LPTSTR szCmdLine)
   char *p = cmd;
   char *pos = cmd;
   while ((pos = strchr(p, ' ')) != NULL) {
-    nspaces ++;
+    nspaces++;
     p = pos + 1;
   }
 
@@ -367,9 +390,8 @@ void VNCOptions::SetFromCommandLine(LPTSTR szCmdLine)
   bool hostGiven = false, portGiven = false;
   // take in order.
   for (j = 0; j < i; j++) {
-    if (SwitchMatch(args[j], "help") ||
-      SwitchMatch(args[j], "?") ||
-      SwitchMatch(args[j], "h")) {
+    if (SwitchMatch(args[j], "help") || SwitchMatch(args[j], "?") ||
+        SwitchMatch(args[j], "h")) {
       ShowHelpBox("TurboVNC Usage Help");
       exit(1);
     } else if (SwitchMatch(args[j], "listen")) {
@@ -400,11 +422,9 @@ void VNCOptions::SetFromCommandLine(LPTSTR szCmdLine)
       }
       if (toupper(args[j][0]) == 'P') {
         m_Span = SPAN_PRIMARY;
-      } else if (toupper(args[j][0]) == 'A' &&
-                 toupper(args[j][1]) == 'L') {
+      } else if (toupper(args[j][0]) == 'A' && toupper(args[j][1]) == 'L') {
         m_Span = SPAN_ALL;
-      } else if (toupper(args[j][0]) == 'A' &&
-                 toupper(args[j][1]) == 'U') {
+      } else if (toupper(args[j][0]) == 'A' && toupper(args[j][1]) == 'U') {
         m_Span = SPAN_AUTO;
       } else {
         ArgError("Invalid monitor spanning mode specified");
@@ -433,7 +453,7 @@ void VNCOptions::SetFromCommandLine(LPTSTR szCmdLine)
     } else if (SwitchMatch(args[j], "smalldotcursor")) {
       m_localCursor = SMALLCURSOR;
     } else if (SwitchMatch(args[j], "normalcursor")) {
-      m_localCursor= NORMALCURSOR;
+      m_localCursor = NORMALCURSOR;
     } else if (SwitchMatch(args[j], "belldeiconify")) {
       m_DeiconifyOnBell = true;
     } else if (SwitchMatch(args[j], "raiseonbeep")) {
@@ -533,8 +553,7 @@ void VNCOptions::SetFromCommandLine(LPTSTR szCmdLine)
       m_DisableClipboard = false;
     } else if (SwitchMatch(args[j], "noclipboard")) {
       m_DisableClipboard = true;
-    }
-    else if (SwitchMatch(args[j], "delay")) {
+    } else if (SwitchMatch(args[j], "delay")) {
       if (++j == i) {
         ArgError("No delay specified");
         continue;
@@ -612,8 +631,7 @@ void VNCOptions::SetFromCommandLine(LPTSTR szCmdLine)
         continue;
       }
       int level = -1;
-      if (sscanf_s(args[j], "%d", &level) != 1
-        || level < 0 || level > 9) {
+      if (sscanf_s(args[j], "%d", &level) != 1 || level < 0 || level > 9) {
         ArgError("Invalid compression level specified");
         continue;
       }
@@ -626,7 +644,7 @@ void VNCOptions::SetFromCommandLine(LPTSTR szCmdLine)
         continue;
       }
       int subsamp = -1;
-      switch(_totupper(args[j][0])) {
+      switch (_totupper(args[j][0])) {
         case '0': case 'G':  subsamp = TVNC_GRAY;  break;
         case '1':  subsamp = TVNC_1X;  break;
         case '2':  subsamp = TVNC_2X;  break;
@@ -751,8 +769,8 @@ void VNCOptions::SetFromCommandLine(LPTSTR szCmdLine)
   }
 
   // tidy up
-  delete [] cmd;
-  delete [] args;
+  delete[] cmd;
+  delete[] args;
 }
 
 
@@ -772,10 +790,11 @@ int readInt(char *name, int defval, char *fname)
 
 void VNCOptions::Save(char *fname)
 {
+  char temps[MAX_DS_STR];
+
   for (int i = rfbEncodingRaw; i <= LASTENCODING; i++) {
-    char buf[128];
-    SPRINTF(buf, "use_encoding_%d", i);
-    saveInt(buf, m_UseEnc[i], fname);
+    SPRINTF(temps, "use_encoding_%d", i);
+    saveInt(temps, m_UseEnc[i], fname);
   }
   saveInt("preferred_encoding", m_PreferredEncoding,   fname);
   saveInt("restricted",         m_restricted,          fname);
@@ -798,31 +817,30 @@ void VNCOptions::Save(char *fname)
   saveInt("fitwindow",          m_FitWindow,           fname);
   saveInt("scale_den",          m_scale_den,           fname);
   saveInt("scale_num",          m_scale_num,           fname);
-  saveInt("resizemode",         m_desktopSize.mode,    fname);
-  saveInt("desktopwidth",       m_desktopSize.width,   fname);
-  saveInt("desktopheight",      m_desktopSize.height,  fname);
+  m_desktopSize.getString(temps, MAX_DS_STR);
+  WritePrivateProfileString("options", "desktopsize", temps, fname);
   saveInt("cursorshape",        m_requestShapeUpdates, fname);
   saveInt("noremotecursor",     m_ignoreShapeUpdates,  fname);
   saveInt("compresslevel",      m_compressLevel,       fname);
   saveInt("subsampling",        m_subsampLevel,        fname);
-  saveInt("quality", m_enableJpegCompression? m_jpegQualityLevel : -1, fname);
+  saveInt("quality", m_enableJpegCompression ? m_jpegQualityLevel : -1, fname);
   saveInt("nounixlogin",        m_noUnixLogin,         fname);
   if (strlen(m_user) > 0)
     WritePrivateProfileString("connection", "user", m_user, fname);
-
 }
 
 
 void VNCOptions::Load(char *fname)
 {
+  char temps[MAX_DS_STR];
+
   for (int i = rfbEncodingRaw; i <= LASTENCODING; i++) {
-    char buf[128];
-    SPRINTF(buf, "use_encoding_%d", i);
-    m_UseEnc[i] = readInt(buf, m_UseEnc[i], fname) != 0;
+    SPRINTF(temps, "use_encoding_%d", i);
+    m_UseEnc[i] = readInt(temps, m_UseEnc[i], fname) != 0;
   }
 
   m_PreferredEncoding =   readInt("preferred_encoding", m_PreferredEncoding, fname);
-  m_restricted =          readInt("restricted", m_restricted, fname) != 0 ;
+  m_restricted =          readInt("restricted", m_restricted, fname) != 0;
   m_ViewOnly =            readInt("viewonly", m_ViewOnly, fname) != 0;
   m_FullScreen =          readInt("fullscreen", m_FullScreen, fname) != 0;
   m_Span =                readInt("span", m_Span, fname);
@@ -842,9 +860,22 @@ void VNCOptions::Load(char *fname)
   m_FitWindow =           readInt("fitwindow", m_FitWindow, fname) != 0;
   m_scale_den =           readInt("scale_den", m_scale_den, fname);
   m_scale_num =           readInt("scale_num", m_scale_num, fname);
-  m_desktopSize.mode =    readInt("resizemode", m_desktopSize.mode, fname);
-  m_desktopSize.width =   readInt("desktopwidth", m_desktopSize.width, fname);
-  m_desktopSize.height =  readInt("desktopheight", m_desktopSize.height, fname);
+  if (GetPrivateProfileString("options", "desktopsize", "", temps, MAX_DS_STR,
+                              fname) == 0) {
+    int resizeMode =      readInt("resizemode", m_desktopSize.mode, fname);
+    int desktopWidth =    readInt("desktopwidth", m_desktopSize.width, fname);
+    int desktopHeight =   readInt("desktopheight", m_desktopSize.height, fname);
+    switch (resizeMode) {
+      case SIZE_SERVER:
+        SPRINTF(temps, "Server");  break;
+      case SIZE_MANUAL:
+        SPRINTF(temps, "%dx%d", desktopWidth, desktopHeight);  break;
+      case SIZE_AUTO:
+        SPRINTF(temps, "Auto");  break;
+    }
+  }
+  if (strlen(temps) && !ParseDesktopSize(temps, m_desktopSize))
+    ArgError("Invalid desktop size specified");
   m_requestShapeUpdates = readInt("cursorshape", m_requestShapeUpdates, fname) != 0;
   m_ignoreShapeUpdates =  readInt("noremotecursor", m_ignoreShapeUpdates, fname) != 0;
 
@@ -866,8 +897,7 @@ void VNCOptions::Load(char *fname)
 
   m_noUnixLogin =         readInt("nounixlogin", m_noUnixLogin, fname) != 0;
 
-  char temps[256];
-  if (GetPrivateProfileString("connection", "user", "", temps, 255,
+  if (GetPrivateProfileString("connection", "user", "", temps, MAX_DS_STR,
                               fname) != 0)
     STRCPY(m_user, temps);
 }
@@ -893,8 +923,8 @@ void VNCOptions::Register()
   }
   vnclog.Print(2, "Viewer is %s\n", filename);
 
-  if (RegCreateKey(HKEY_CLASSES_ROOT, "VncViewer.Config", &hKey)
-      == ERROR_SUCCESS) {
+  if (RegCreateKey(HKEY_CLASSES_ROOT, "VncViewer.Config",
+                   &hKey) == ERROR_SUCCESS) {
     RegSetValue(hKey, NULL, REG_SZ, "VNCviewer Config File", 0);
 
     if (RegCreateKey(hKey, "DefaultIcon", &hKey2) == ERROR_SUCCESS) {
@@ -902,7 +932,7 @@ void VNCOptions::Register()
       RegSetValue(hKey2, NULL, REG_SZ, keybuf, 0);
       RegCloseKey(hKey2);
     }
-    if (RegCreateKey(hKey, "Shell\\open\\command", &hKey2)  == ERROR_SUCCESS) {
+    if (RegCreateKey(hKey, "Shell\\open\\command", &hKey2) == ERROR_SUCCESS) {
       SPRINTF(keybuf, "\"%s\" -config \"%%1\"", filename);
       RegSetValue(hKey2, NULL, REG_SZ, keybuf, 0);
       RegCloseKey(hKey2);
@@ -912,8 +942,8 @@ void VNCOptions::Register()
   }
 
   if (RegCreateKey(HKEY_LOCAL_MACHINE,
-        "Software\\Microsoft\\Windows\\CurrentVersion\\App Paths\\vncviewer.exe",
-        &hKey) == ERROR_SUCCESS) {
+                   "Software\\Microsoft\\Windows\\CurrentVersion\\App Paths\\vncviewer.exe",
+                   &hKey) == ERROR_SUCCESS) {
     RegSetValue(hKey, NULL, REG_SZ, filename, 0);
     RegCloseKey(hKey);
   }
@@ -925,8 +955,8 @@ void VNCOptions::Register()
 INT_PTR VNCOptions::DoDialog(bool running)
 {
   m_running = running;
-  return DialogBoxParam(pApp->m_instance, MAKEINTRESOURCE(IDD_PARENT),
-                        NULL, (DLGPROC) DlgProc, (LPARAM)this);
+  return DialogBoxParam(pApp->m_instance, MAKEINTRESOURCE(IDD_PARENT), NULL,
+                        (DLGPROC)DlgProc, (LPARAM)this);
 }
 
 
@@ -934,7 +964,7 @@ BOOL VNCOptions::RaiseDialog()
 {
   if (m_hParent == 0)
     return FALSE;
-  return (SetForegroundWindow(m_hParent) != 0);
+  return SetForegroundWindow(m_hParent) != 0;
 }
 
 
@@ -947,8 +977,8 @@ void VNCOptions::CloseDialog()
 }
 
 
-BOOL CALLBACK VNCOptions::DlgProc(HWND hwndDlg, UINT uMsg,
-                                  WPARAM wParam, LPARAM lParam)
+BOOL CALLBACK VNCOptions::DlgProc(HWND hwndDlg, UINT uMsg, WPARAM wParam,
+                                  LPARAM lParam)
 {
   // We use the dialog box's USERDATA to store a _this pointer
   // This is set only after WM_INITDIALOG has been recieved, though!
@@ -987,10 +1017,10 @@ BOOL CALLBACK VNCOptions::DlgProc(HWND hwndDlg, UINT uMsg,
                           (LPARAM)_this);
 
       _this->m_hPageGlobal =
-         CreateDialogParam(pApp->m_instance,
-                           MAKEINTRESOURCE(IDD_OPT_GLOBAL_TAB), hwndDlg,
-                           (DLGPROC)_this->DlgProcGlobalOptions,
-                           (LPARAM)_this);
+        CreateDialogParam(pApp->m_instance,
+                          MAKEINTRESOURCE(IDD_OPT_GLOBAL_TAB), hwndDlg,
+                          (DLGPROC)_this->DlgProcGlobalOptions,
+                          (LPARAM)_this);
 
       // Position child dialogs to fit the Tab control's display area
       RECT rc;
@@ -1056,15 +1086,15 @@ BOOL CALLBACK VNCOptions::DlgProc(HWND hwndDlg, UINT uMsg,
             case IDC_TAB:
               int i = TabCtrl_GetCurFocus(_this->m_hTab);
               switch (i) {
-              case 0:
-                ShowWindow(_this->m_hPageEncoding, SW_HIDE);
-                break;
-              case 1:
-                ShowWindow(_this->m_hPageConnection, SW_HIDE);
-                break;
-              case 2:
-                ShowWindow(_this->m_hPageGlobal, SW_HIDE);
-                break;
+                case 0:
+                  ShowWindow(_this->m_hPageEncoding, SW_HIDE);
+                  break;
+                case 1:
+                  ShowWindow(_this->m_hPageConnection, SW_HIDE);
+                  break;
+                case 2:
+                  ShowWindow(_this->m_hPageGlobal, SW_HIDE);
+                  break;
               }
               return 0;
           }
@@ -1123,7 +1153,7 @@ BOOL CALLBACK VNCOptions::DlgProcEncOptions(HWND hwnd, UINT uMsg,
     case WM_INITDIALOG:
     {
       SetWindowLongPtr(hwnd, GWLP_USERDATA, lParam);
-      VNCOptions *_this = (VNCOptions *) lParam;
+      VNCOptions *_this = (VNCOptions *)lParam;
 
       int encoding = _this->m_PreferredEncoding;
       if (_this->m_LastEncoding != rfbEncodingTight &&
@@ -1135,7 +1165,7 @@ BOOL CALLBACK VNCOptions::DlgProcEncOptions(HWND hwnd, UINT uMsg,
       int i;
       for (i = 0; i <= (MAX_LEN_COMBO - 1); i++) {
         SendMessage(hListBox, CB_INSERTSTRING, (WPARAM)i,
-                    (LPARAM)(int FAR*)rfbcombo[i].NameString);
+                    (LPARAM)(int FAR *)rfbcombo[i].NameString);
       }
       if (encoding != rfbEncodingTight) {
         SendMessage(hListBox, CB_INSERTSTRING, MAX_LEN_COMBO,
@@ -1172,7 +1202,7 @@ BOOL CALLBACK VNCOptions::DlgProcEncOptions(HWND hwnd, UINT uMsg,
                     FALSE);
 
       HWND hSubsampLevel = GetDlgItem(hwnd, IDC_SUBSAMPLEVEL);
-      SendMessage(hSubsampLevel, TBM_SETRANGE, TRUE, (LPARAM) MAKELONG(0, 3));
+      SendMessage(hSubsampLevel, TBM_SETRANGE, TRUE, (LPARAM)MAKELONG(0, 3));
       _this->SetSubsampSlider(hwnd, _this->m_subsampLevel);
 
       _this->EnableSubsamp(hwnd,
@@ -1180,9 +1210,9 @@ BOOL CALLBACK VNCOptions::DlgProcEncOptions(HWND hwnd, UINT uMsg,
 
       HWND hJpeg = GetDlgItem(hwnd, IDC_QUALITYLEVEL);
       if (encoding == rfbEncodingTight)
-        SendMessage(hJpeg, TBM_SETRANGE, TRUE, (LPARAM) MAKELONG(1, 100));
+        SendMessage(hJpeg, TBM_SETRANGE, TRUE, (LPARAM)MAKELONG(1, 100));
       else {
-        SendMessage(hJpeg, TBM_SETRANGE, TRUE, (LPARAM) MAKELONG(0, 9));
+        SendMessage(hJpeg, TBM_SETRANGE, TRUE, (LPARAM)MAKELONG(0, 9));
         SetDlgItemText(hwnd, IDC_STATIC_QUAL, "Image quality level:");
         if (_this->m_jpegQualityLevel > 9)
           _this->m_jpegQualityLevel = 9;
@@ -1206,11 +1236,10 @@ BOOL CALLBACK VNCOptions::DlgProcEncOptions(HWND hwnd, UINT uMsg,
           switch (HIWORD(wParam)) {
             case BN_CLICKED:
               HWND hCR = GetDlgItem(hwnd, ID_SESSION_SET_CRECT);
-              if (SendMessage(hCR, BM_GETCHECK, 0, 0) != 0) {
+              if (SendMessage(hCR, BM_GETCHECK, 0, 0) != 0)
                 SendMessage(hCR, BM_SETCHECK, FALSE, 0);
-              } else {
+              else
                 SendMessage(hCR, BM_SETCHECK, TRUE, 0);
-              }
               _this->SetComboBox(hwnd);
               return 0;
           }
@@ -1227,14 +1256,14 @@ BOOL CALLBACK VNCOptions::DlgProcEncOptions(HWND hwnd, UINT uMsg,
                 _this->EnableSubsamp(hwnd, TRUE);
                 if (slidermax < 9)
                   SendMessage(hCompress, TBM_SETRANGE, TRUE,
-                              (LPARAM) MAKELONG(1, 2));
+                              (LPARAM)MAKELONG(1, 2));
                 SendMessage(hAllowJpeg, BM_SETCHECK, TRUE, 0);
               } else {
                 _this->EnableQuality(hwnd, FALSE);
                 _this->EnableSubsamp(hwnd, FALSE);
                 if (slidermax < 9)
                   SendMessage(hCompress, TBM_SETRANGE, TRUE,
-                              (LPARAM) MAKELONG(0, 1));
+                              (LPARAM)MAKELONG(0, 1));
                 SendMessage(hAllowJpeg, BM_SETCHECK, FALSE, 0);
               }
               _this->SetComboBox(hwnd);
@@ -1299,8 +1328,7 @@ BOOL CALLBACK VNCOptions::DlgProcEncOptions(HWND hwnd, UINT uMsg,
                 while (count > MAX_LEN_COMBO)
                   count = (int)SendMessage(hListBox, CB_DELETESTRING,
                                            MAX_LEN_COMBO, 0);
-              }
-              else break;
+              } else break;
               DWORD slidermax = (DWORD)SendMessage(hCompress, TBM_GETRANGEMAX,
                                                    0, 0);
               if (rfbcombo[i].enableJpeg) {
@@ -1311,7 +1339,7 @@ BOOL CALLBACK VNCOptions::DlgProcEncOptions(HWND hwnd, UINT uMsg,
                 _this->SetQualitySlider(hwnd, rfbcombo[i].qualityLevel);
                 if (slidermax < 9)
                   SendMessage(hCompress, TBM_SETRANGE, TRUE,
-                              (LPARAM) MAKELONG(1, 2));
+                              (LPARAM)MAKELONG(1, 2));
                 _this->SetCompressLevel(hwnd, rfbcombo[i].compressLevel);
               } else {
                 _this->EnableQuality(hwnd, 0);
@@ -1319,7 +1347,7 @@ BOOL CALLBACK VNCOptions::DlgProcEncOptions(HWND hwnd, UINT uMsg,
                 SendMessage(hAllowJpeg, BM_SETCHECK, 0, 0);
                 if (slidermax < 9)
                   SendMessage(hCompress, TBM_SETRANGE, TRUE,
-                              (LPARAM) MAKELONG(0, 1));
+                              (LPARAM)MAKELONG(0, 1));
                 _this->SetCompressLevel(hwnd, rfbcombo[i].compressLevel);
               }
               SendMessage(hCopyRect, BM_SETCHECK, 1, 0);
@@ -1334,7 +1362,7 @@ BOOL CALLBACK VNCOptions::DlgProcEncOptions(HWND hwnd, UINT uMsg,
 
     case WM_HSCROLL:
     {
-      DWORD dwPos ;    // current position of slider
+      DWORD dwPos;     // current position of slider
 
       HWND hCompress = GetDlgItem(hwnd, IDC_COMPRESSLEVEL);
       HWND hSubsampLevel = GetDlgItem(hwnd, IDC_SUBSAMPLEVEL);
@@ -1346,7 +1374,7 @@ BOOL CALLBACK VNCOptions::DlgProcEncOptions(HWND hwnd, UINT uMsg,
       if (HWND(lParam) == hSubsampLevel) {
         dwPos = (DWORD)SendMessage(hSubsampLevel, TBM_GETPOS, 0, 0);
         SetDlgItemText(hwnd, IDC_STATIC_SLEVEL,
-          sampopt2str[sliderpos2sampopt[dwPos]]);
+                       sampopt2str[sliderpos2sampopt[dwPos]]);
       }
       if (HWND(lParam) == hJpeg) {
         dwPos = (DWORD)SendMessage(hJpeg, TBM_GETPOS, 0, 0);
@@ -1379,7 +1407,7 @@ BOOL CALLBACK VNCOptions::DlgProcConnOptions(HWND hwnd, UINT uMsg,
     case WM_INITDIALOG:
     {
       SetWindowLongPtr(hwnd, GWLP_USERDATA, lParam);
-      VNCOptions *_this = (VNCOptions *) lParam;
+      VNCOptions *_this = (VNCOptions *)lParam;
 
       // Initialise the controls
       HWND hSwap = GetDlgItem(hwnd, ID_SESSION_SWAPMOUSE);
@@ -1405,7 +1433,7 @@ BOOL CALLBACK VNCOptions::DlgProcConnOptions(HWND hwnd, UINT uMsg,
       int i;
       for (i = 0; i < TVNC_GRABOPT; i++)
         SendMessage(hGrab, CB_INSERTSTRING, (WPARAM)i,
-              (LPARAM)(int FAR*)grabcombo[i]);
+                    (LPARAM)(int FAR *)grabcombo[i]);
       SendMessage(hGrab, CB_SETCURSEL, (WPARAM)_this->m_GrabKeyboard, 0);
 
       char scalecombo[14][19] = {
@@ -1415,39 +1443,48 @@ BOOL CALLBACK VNCOptions::DlgProcConnOptions(HWND hwnd, UINT uMsg,
       HWND hScalEdit = GetDlgItem(hwnd, IDC_SCALE_EDIT);
       for (i = 0; i <= 13; i++)
         SendMessage(hScalEdit, CB_INSERTSTRING, (WPARAM)i,
-              (LPARAM)(int FAR*)scalecombo[i]);
-      if (_this->m_FitWindow) {
+                    (LPARAM)(int FAR *)scalecombo[i]);
+      if (_this->m_FitWindow)
         SetDlgItemText(hwnd, IDC_SCALE_EDIT, "Fixed Aspect Ratio");
-      } else
+      else
         SetDlgItemInt(hwnd, IDC_SCALE_EDIT,
                       ((_this->m_scale_num * 100) / _this->m_scale_den),
                       FALSE);
       GetDlgItemText(hwnd, IDC_SCALE_EDIT, _this->m_oldScalingFactor, 20);
 
-      char sizecombo[37][10] = {
+      char sizecombo[51][31] = {
         "Auto", "Server", "480x320", "640x360", "640x480", "800x480",
-        "800x600", "854x480", "960x540", "960x600", "960x640", "1024x640",
-        "1024x768", "1136x640", "1152x864", "1280x720", "1280x800", "1280x960",
-        "1280x1024", "1344x840", "1344x1008", "1360x768", "1366x768",
-        "1400x1050", "1440x900", "1600x900", "1600x1000", "1600x1200",
-        "1680x1050", "1920x1080", "1920x1200", "2048x1152", "2048x1536",
-        "2560x1440", "2560x1600", "2880x1800", "3200x1800"
+        "800x600", "854x480", "960x540", "960x600", "960x640",
+        "1024x640", "1024x640+0+0,1024x640+1024+0",
+        "1024x768", "1136x640", "1152x864",
+        "1280x720", "1280x720+0+0,1280x720+1280+0",
+        "1280x800", "1280x800+0+0,1280x800+1280+0",
+        "1280x960", "1280x1024",
+        "1344x840", "1344x840+0+0,1344x840+1344+0",
+        "1344x1008", "1360x768",
+        "1366x768", "1366x768+0+0,1366x768+1366+0",
+        "1400x1050",
+        "1440x900", "1440x900+0+0,1440x900+1440+0",
+        "1600x900", "1600x900+0+0,1600x900+1600+0",
+        "1600x1000", "1600x1000+0+0,1600x1000+1600+0",
+        "1600x1200", "1680x1050",
+        "1920x1080", "1920x1080+0+0,1920x1080+1920+0",
+        "1920x1200", "1920x1200+0+0,1920x1200+1920+0",
+        "2048x1152", "2048x1536",
+        "2560x1440", "2560x1440+0+0,2560x1440+2560+0",
+        "2560x1600", "2560x1600+0+0,2560x1600+2560+0",
+        "2880x1800", "2880x1800+0+0,2880x1800+2880+0",
+        "3200x1800", "3200x1800+0+0,3200x1800+3200+0"
       };
       HWND hSizeEdit = GetDlgItem(hwnd, IDC_DESKTOPSIZE_EDIT);
-      for (i = 0; i < 37; i++)
+      for (i = 0; i < 51; i++)
         SendMessage(hSizeEdit, CB_INSERTSTRING, (WPARAM)i,
-              (LPARAM)(int FAR*)sizecombo[i]);
-      if (_this->m_desktopSize.mode == SIZE_AUTO)
-        SetDlgItemText(hwnd, IDC_DESKTOPSIZE_EDIT, "Auto");
-      else if (_this->m_desktopSize.mode == SIZE_SERVER)
-        SetDlgItemText(hwnd, IDC_DESKTOPSIZE_EDIT, "Server");
-      else {
-        char temps[12];
-        SPRINTF(temps, "%dx%d", _this->m_desktopSize.width,
-                 _this->m_desktopSize.height);
-        SetDlgItemText(hwnd, IDC_DESKTOPSIZE_EDIT, temps);
-      }
-      GetDlgItemText(hwnd, IDC_DESKTOPSIZE_EDIT, _this->m_oldDesktopSize, 20);
+                    (LPARAM)(int FAR *)sizecombo[i]);
+      char temps[MAX_DS_STR];
+      _this->m_desktopSize.getString(temps, MAX_DS_STR);
+      SetDlgItemText(hwnd, IDC_DESKTOPSIZE_EDIT, temps);
+      GetDlgItemText(hwnd, IDC_DESKTOPSIZE_EDIT, _this->m_oldDesktopSize,
+                     MAX_DS_STR);
 
       HWND hFullScreen = GetDlgItem(hwnd, IDC_FULLSCREEN);
       SendMessage(hFullScreen, BM_SETCHECK, _this->m_FullScreen, 0);
@@ -1458,7 +1495,7 @@ BOOL CALLBACK VNCOptions::DlgProcConnOptions(HWND hwnd, UINT uMsg,
       };
       for (i = 0; i < SPAN_OPTS; i++)
         SendMessage(hSpan, CB_INSERTSTRING, (WPARAM)i,
-              (LPARAM)(int FAR*)spancombo[i]);
+                    (LPARAM)(int FAR *)spancombo[i]);
       SendMessage(hSpan, CB_SETCURSEL, (WPARAM)_this->m_Span, 0);
 
       HWND hEmulate = GetDlgItem(hwnd, IDC_EMULATECHECK);
@@ -1466,6 +1503,9 @@ BOOL CALLBACK VNCOptions::DlgProcConnOptions(HWND hwnd, UINT uMsg,
 
       EnableWindow(hSwap, !_this->m_ViewOnly);
       EnableWindow(hEmulate, !_this->m_ViewOnly);
+
+      HWND hFSAltEnter = GetDlgItem(hwnd, IDC_FSALTENTER);
+      SendMessage(hFSAltEnter, BM_SETCHECK, _this->m_FSAltEnter, 0);
 
       HWND hRemoteCursor;
       if (_this->m_requestShapeUpdates && !_this->m_ignoreShapeUpdates)
@@ -1490,7 +1530,8 @@ BOOL CALLBACK VNCOptions::DlgProcConnOptions(HWND hwnd, UINT uMsg,
               int scale_num, scale_den;
               if (!ParseScalingFactor(newScalingFactor, fitWindow, scale_num,
                                       scale_den)) {
-                SetDlgItemText(hwnd, IDC_SCALE_EDIT, _this->m_oldScalingFactor);
+                SetDlgItemText(hwnd, IDC_SCALE_EDIT,
+                               _this->m_oldScalingFactor);
               } else {
                 if (fitWindow)
                   SetDlgItemText(hwnd, IDC_SCALE_EDIT, "Fixed Aspect Ratio");
@@ -1505,25 +1546,18 @@ BOOL CALLBACK VNCOptions::DlgProcConnOptions(HWND hwnd, UINT uMsg,
         case IDC_DESKTOPSIZE_EDIT:
           switch (HIWORD(wParam)) {
             case CBN_KILLFOCUS:
-              char newDesktopSize[20];
-              GetDlgItemText(hwnd, IDC_DESKTOPSIZE_EDIT, newDesktopSize, 20);
+              char newDesktopSize[MAX_DS_STR];
+              GetDlgItemText(hwnd, IDC_DESKTOPSIZE_EDIT, newDesktopSize,
+                             MAX_DS_STR);
               DesktopSize desktopSize;
               if (!ParseDesktopSize(newDesktopSize, desktopSize))
                 SetDlgItemText(hwnd, IDC_DESKTOPSIZE_EDIT,
                                _this->m_oldDesktopSize);
               else {
-                if (desktopSize.mode == SIZE_AUTO)
-                    SetDlgItemText(hwnd, IDC_DESKTOPSIZE_EDIT, "Auto");
-                else if (desktopSize.mode == SIZE_SERVER)
-                    SetDlgItemText(hwnd, IDC_DESKTOPSIZE_EDIT, "Server");
-                else {
-                  char temps[12];
-                  SPRINTF(temps, "%dx%d", desktopSize.width,
-                           desktopSize.height);
-                  SetDlgItemText(hwnd, IDC_DESKTOPSIZE_EDIT, temps);
-                }
+                desktopSize.getString(newDesktopSize, MAX_DS_STR);
+                SetDlgItemText(hwnd, IDC_DESKTOPSIZE_EDIT, newDesktopSize);
                 GetDlgItemText(hwnd, IDC_DESKTOPSIZE_EDIT,
-                               _this->m_oldDesktopSize, 20);
+                               _this->m_oldDesktopSize, MAX_DS_STR);
               }
           }
           return 0;
@@ -1568,8 +1602,8 @@ BOOL CALLBACK VNCOptions::DlgProcConnOptions(HWND hwnd, UINT uMsg,
           }
 
           HWND hSizeEdit = GetDlgItem(hwnd, IDC_DESKTOPSIZE_EDIT);
-          char buf[12];
-          GetDlgItemText(hwnd, IDC_DESKTOPSIZE_EDIT, buf, 12);
+          char buf[MAX_DS_STR];
+          GetDlgItemText(hwnd, IDC_DESKTOPSIZE_EDIT, buf, MAX_DS_STR);
           DesktopSize desktopSize;
           if (ParseDesktopSize(buf, desktopSize))
             _this->m_desktopSize = desktopSize;
@@ -1611,6 +1645,10 @@ BOOL CALLBACK VNCOptions::DlgProcConnOptions(HWND hwnd, UINT uMsg,
           HWND hEmulate = GetDlgItem(hwnd, IDC_EMULATECHECK);
           _this->m_Emul3Buttons =
             (SendMessage(hEmulate, BM_GETCHECK, 0, 0) == BST_CHECKED);
+
+          HWND hFSAltEnter = GetDlgItem(hwnd, IDC_FSALTENTER);
+          _this->m_FSAltEnter =
+            (SendMessage(hFSAltEnter, BM_GETCHECK, 0, 0) == BST_CHECKED);
 
           _this->m_requestShapeUpdates = false;
           _this->m_ignoreShapeUpdates = false;
@@ -1672,7 +1710,7 @@ void VNCOptions::SetSubsampSlider(HWND hwnd, int subsamp)
 {
   HWND hJpegSubsamp = GetDlgItem(hwnd, IDC_SUBSAMPLEVEL);
   SendMessage(hJpegSubsamp, TBM_SETPOS, TRUE, sampopt2sliderpos[subsamp]);
-  if (subsamp >= 0 && subsamp <= TVNC_SAMPOPT-1)
+  if (subsamp >= 0 && subsamp <= TVNC_SAMPOPT - 1)
     SetDlgItemText(hwnd, IDC_STATIC_SLEVEL, sampopt2str[subsamp]);
 }
 
@@ -1721,8 +1759,8 @@ void VNCOptions::SetCompressLevel(HWND hwnd, int level)
     EnableWindow(hInterframe, FALSE);
   }
 
-  DWORD compressLevelMax = (DWORD)SendMessage(hCompress, TBM_GETRANGEMAX,
-                                              0, 0);
+  DWORD compressLevelMax =
+    (DWORD)SendMessage(hCompress, TBM_GETRANGEMAX, 0, 0);
   if (compressLevelMax < 9 && IsWindowEnabled(hInterframe)) {
     if (level >= 5 && level <= 8) {
       level -= 5;
@@ -1758,8 +1796,8 @@ void VNCOptions::SetComboBox(HWND hwnd)
   HWND hListBox = GetDlgItem(hwnd, IDC_ENCODING);
   int compressLevel = GetCompressLevel(hwnd);
   int qualityLevel = (int)SendMessage(hQualityLevel, TBM_GETPOS, 0, 0);
-  int subsampLevel = sliderpos2sampopt[SendMessage(hSubsampLevel, TBM_GETPOS,
-                                                   0, 0)];
+  int subsampLevel =
+    sliderpos2sampopt[SendMessage(hSubsampLevel, TBM_GETPOS, 0, 0)];
   int allowJpeg = (int)SendMessage(hAllowJpeg, BM_GETCHECK, 0, 0);
   int copyRect = (int)SendMessage(hCopyRect, BM_GETCHECK, 0, 0);
   int i;
@@ -1786,8 +1824,7 @@ void VNCOptions::SetComboBox(HWND hwnd)
     if (count <= MAX_LEN_COMBO)
       SendMessage(hListBox, CB_INSERTSTRING, MAX_LEN_COMBO, (LPARAM)"Custom");
     SendMessage(hListBox, CB_SETCURSEL, MAX_LEN_COMBO, 0);
-  }
-  else {
+  } else {
     int count = (int)SendMessage(hListBox, CB_GETCOUNT, 0, 0);
     while (count > MAX_LEN_COMBO)
       count = (int)SendMessage(hListBox, CB_DELETESTRING, MAX_LEN_COMBO, 0);
@@ -1835,21 +1872,21 @@ BOOL CALLBACK VNCOptions::DlgProcGlobalOptions(HWND hwnd, UINT uMsg,
                     FALSE);
 
       HWND hSpin1 = GetDlgItem(hwnd, IDC_SPIN1);
-      SendMessage(hSpin1, UDM_SETBUDDY, (WPARAM) (HWND)hEditList, 0);
+      SendMessage(hSpin1, UDM_SETBUDDY, (WPARAM)(HWND)hEditList, 0);
 
       HWND hChec = GetDlgItem(hwnd, IDC_CHECK_LOG_FILE);
       HWND hEditFile = GetDlgItem(hwnd, IDC_EDIT_LOG_FILE);
       HWND hEditLevel = GetDlgItem(hwnd, IDC_EDIT_LOG_LEVEL);
 
       HWND hSpin2 = GetDlgItem(hwnd, IDC_SPIN2);
-      SendMessage(hSpin2, UDM_SETBUDDY, (WPARAM) (HWND)hEditLevel, 0);
+      SendMessage(hSpin2, UDM_SETBUDDY, (WPARAM)(HWND)hEditLevel, 0);
 
       HWND hListenPort = GetDlgItem(hwnd, IDC_LISTEN_PORT);
       SetDlgItemInt(hwnd, IDC_LISTEN_PORT, pApp->m_options.m_listenPort,
                     FALSE);
 
       HWND hSpin3 = GetDlgItem(hwnd, IDC_SPIN3);
-      SendMessage(hSpin3, UDM_SETBUDDY, (WPARAM) (HWND)hListenPort, 0);
+      SendMessage(hSpin3, UDM_SETBUDDY, (WPARAM)(HWND)hListenPort, 0);
 
       SendMessage(hChec, BM_SETCHECK, pApp->m_options.m_logToFile, 0);
       _this->EnableLog(hwnd, !(SendMessage(hChec, BM_GETCHECK, 0, 0) == 0));
@@ -1984,7 +2021,7 @@ BOOL CALLBACK VNCOptions::DlgProcGlobalOptions(HWND hwnd, UINT uMsg,
           switch (HIWORD(wParam)) {
             case BN_CLICKED:
               HWND hChec = GetDlgItem(hwnd, IDC_CHECK_LOG_FILE);
-              if (SendMessage(hChec, BM_GETCHECK, 0, 0) == 0){
+              if (SendMessage(hChec, BM_GETCHECK, 0, 0) == 0) {
                 _this->EnableLog(hwnd, TRUE);
                 SendMessage(hChec, BM_SETCHECK, TRUE, 0);
               } else {
@@ -2003,7 +2040,7 @@ BOOL CALLBACK VNCOptions::DlgProcGlobalOptions(HWND hwnd, UINT uMsg,
         case UDN_DELTAPOS:
         {
           int max, min;
-          NMUPDOWN lpnmud = *(LPNMUPDOWN) lParam;
+          NMUPDOWN lpnmud = *(LPNMUPDOWN)lParam;
           NMHDR hdr = lpnmud.hdr;
           HWND hCtrl = (HWND)SendMessage(hdr.hwndFrom, UDM_GETBUDDY, 0, 0);
           long ctrl = GetDlgCtrlID(hCtrl);
@@ -2074,17 +2111,17 @@ void VNCOptions::Lim(HWND hwnd, int control, DWORD min, DWORD max)
 void VNCOptions::LoadOpt(char subkey[256], char keyname[256])
 {
   HKEY RegKey;
-  char key[80];
+  char key[80], temps[MAX_DS_STR];
+  DWORD buflen = MAX_DS_STR;
 
   STRCPY(key, keyname);
   STRCAT(key, "\\");
   STRCAT(key, subkey);
-   RegOpenKeyEx(HKEY_CURRENT_USER, key, 0, KEY_ALL_ACCESS, &RegKey);
+  RegOpenKeyEx(HKEY_CURRENT_USER, key, 0, KEY_ALL_ACCESS, &RegKey);
 
   for (int i = rfbEncodingRaw; i <= LASTENCODING; i++) {
-    char buf[128];
-    SPRINTF(buf, "use_encoding_%d", i);
-    m_UseEnc[i] = read(RegKey, buf, m_UseEnc[i]) != 0;
+    SPRINTF(temps, "use_encoding_%d", i);
+    m_UseEnc[i] = read(RegKey, temps, m_UseEnc[i]) != 0;
   }
 
 // NOTE: We do not cache some of the options that aren't exposed in the GUI,
@@ -2117,37 +2154,49 @@ void VNCOptions::LoadOpt(char subkey[256], char keyname[256])
   m_FitWindow =           read(RegKey, "fitwindow", m_FitWindow) != 0;
   m_scale_den =           read(RegKey, "scale_den", m_scale_den);
   m_scale_num =           read(RegKey, "scale_num", m_scale_num);
-  m_desktopSize.mode =    read(RegKey, "resizemode", m_desktopSize.mode);
-  m_desktopSize.width =   read(RegKey, "desktopwidth", m_desktopSize.width);
-  m_desktopSize.height =  read(RegKey, "desktopheight", m_desktopSize.height);
+  if (RegQueryValueEx(RegKey, "desktopsize", NULL, NULL, (LPBYTE)temps,
+                      &buflen) != ERROR_SUCCESS) {
+    int resizeMode =      read(RegKey, "resizemode", m_desktopSize.mode);
+    int desktopWidth =    read(RegKey, "desktopwidth", m_desktopSize.width);
+    int desktopHeight =   read(RegKey, "desktopheight", m_desktopSize.height);
+    switch (resizeMode) {
+      case SIZE_SERVER:
+        SPRINTF(temps, "Server");  break;
+      case SIZE_MANUAL:
+        SPRINTF(temps, "%dx%d", desktopWidth, desktopHeight);  break;
+      case SIZE_AUTO:
+        SPRINTF(temps, "Auto");  break;
+    }
+  }
+  if (strlen(temps) && (!ParseDesktopSize(temps, m_desktopSize)))
+    ArgError("Invalid desktop size specified");
   m_requestShapeUpdates = read(RegKey, "cursorshape", m_requestShapeUpdates) != 0;
   m_ignoreShapeUpdates =  read(RegKey, "noremotecursor", m_ignoreShapeUpdates) != 0;
 //m_noUnixLogin =         read(RegKey, "nounixlogin", m_noUnixLogin) != 0;
 
 //char buf[256];
 //DWORD buflen = 255;
-//if (RegQueryValueEx(RegKey, (LPTSTR) "user", NULL, NULL, (LPBYTE) buf,
+//if (RegQueryValueEx(RegKey, (LPTSTR)"user", NULL, NULL, (LPBYTE)buf,
 //                    &buflen) == ERROR_SUCCESS && buflen > 0)
 //  STRCPY(m_user, buf);
 
   int level =             read(RegKey, "compresslevel", -1);
-  if (level != -1) {
+  if (level != -1)
     m_compressLevel = level;
-  }
 
   level =                 read(RegKey, "subsampling", -1);
-  if (level != -1) {
+  if (level != -1)
     m_subsampLevel = level;
-  }
 
   m_scaling =             read(RegKey, "scaling", m_scaling) != 0;
 
-  m_enableJpegCompression = true;
-  level =                 read(RegKey, "quality", 95);
+  level =                 read(RegKey, "quality", -2);
   if (level == -1)
     m_enableJpegCompression = false;
-  else
+  else if (level != -2) {
+    m_enableJpegCompression = true;
     m_jpegQualityLevel = level;
+  }
   RegCloseKey(RegKey);
 }
 
@@ -2168,7 +2217,7 @@ void VNCOptions::SaveOpt(char subkey[256], char keyname[256])
 {
   DWORD dispos;
   HKEY RegKey;
-  char key[80];
+  char key[80], temps[MAX_DS_STR];
 
   STRCPY(key, keyname);
   STRCAT(key, "\\");
@@ -2177,9 +2226,8 @@ void VNCOptions::SaveOpt(char subkey[256], char keyname[256])
                  KEY_ALL_ACCESS, NULL, &RegKey, &dispos);
 
   for (int i = rfbEncodingRaw; i <= LASTENCODING; i++) {
-    char buf[128];
-    SPRINTF(buf, "use_encoding_%d", i);
-    save(RegKey, buf, m_UseEnc[i]);
+    SPRINTF(temps, "use_encoding_%d", i);
+    save(RegKey, temps, m_UseEnc[i]);
   }
 
   save(RegKey, "preferred_encoding", m_PreferredEncoding);
@@ -2202,9 +2250,9 @@ void VNCOptions::SaveOpt(char subkey[256], char keyname[256])
   save(RegKey, "fitwindow", m_FitWindow);
   save(RegKey, "scale_den", m_scale_den);
   save(RegKey, "scale_num", m_scale_num);
-  save(RegKey, "resizemode", m_desktopSize.mode);
-  save(RegKey, "desktopwidth", m_desktopSize.width);
-  save(RegKey, "desktopheight", m_desktopSize.height);
+  m_desktopSize.getString(temps, MAX_DS_STR);
+  RegSetValueEx(RegKey, "desktopsize", NULL, REG_SZ, (CONST BYTE *)temps,
+                (DWORD)(strlen(temps) + 1));
   save(RegKey, "cursorshape", m_requestShapeUpdates);
   save(RegKey, "noremotecursor", m_ignoreShapeUpdates);
   save(RegKey, "compresslevel", m_compressLevel);
@@ -2238,48 +2286,48 @@ void VNCOptions::LoadGenOpt()
 {
   HKEY hRegKey;
 
-  if (RegOpenKey(HKEY_CURRENT_USER, SETTINGS_KEY_NAME, &hRegKey)
-      != ERROR_SUCCESS) {
+  if (RegOpenKey(HKEY_CURRENT_USER, SETTINGS_KEY_NAME,
+                 &hRegKey) != ERROR_SUCCESS) {
     hRegKey = NULL;
   } else {
     DWORD buffer;
     DWORD buffersize = sizeof(buffer);
     DWORD valtype;
+
     if (RegQueryValueEx(hRegKey, "SkipFullScreenPrompt", NULL, &valtype,
-                        (LPBYTE)&buffer, &buffersize) == ERROR_SUCCESS) {
+                        (LPBYTE)&buffer, &buffersize) == ERROR_SUCCESS)
       m_skipprompt = buffer == 1;
-    }
+
     if (RegQueryValueEx(hRegKey, "NoToolbar", NULL, &valtype,
-                        (LPBYTE)&buffer, &buffersize) == ERROR_SUCCESS) {
+                        (LPBYTE)&buffer, &buffersize) == ERROR_SUCCESS)
       m_toolbar = buffer == 1;
-    }
+
     if (RegQueryValueEx(hRegKey, "LogToFile", NULL, &valtype,
-                        (LPBYTE)&buffer, &buffersize) == ERROR_SUCCESS) {
+                        (LPBYTE)&buffer, &buffersize) == ERROR_SUCCESS)
       m_logToFile = buffer == 1;
-    }
+
     if (RegQueryValueEx(hRegKey, "HistoryLimit", NULL, &valtype,
-                        (LPBYTE)&buffer, &buffersize) == ERROR_SUCCESS) {
+                        (LPBYTE)&buffer, &buffersize) == ERROR_SUCCESS)
       m_historyLimit = buffer;
-    }
+
     if (RegQueryValueEx(hRegKey, "LocalCursor", NULL, &valtype,
-                        (LPBYTE)&buffer, &buffersize) == ERROR_SUCCESS) {
+                        (LPBYTE)&buffer, &buffersize) == ERROR_SUCCESS)
       m_localCursor = buffer;
-    }
+
     if (RegQueryValueEx(hRegKey, "LogLevel", NULL, &valtype,
-                        (LPBYTE)&buffer, &buffersize) == ERROR_SUCCESS) {
+                        (LPBYTE)&buffer, &buffersize) == ERROR_SUCCESS)
       m_logLevel = buffer;
-    }
+
     if (RegQueryValueEx(hRegKey, "ListenPort", NULL, &valtype,
-                        (LPBYTE)&buffer, &buffersize) == ERROR_SUCCESS) {
+                        (LPBYTE)&buffer, &buffersize) == ERROR_SUCCESS)
       m_listenPort = buffer;
-    }
 
     char buf[_MAX_PATH];
     buffersize = _MAX_PATH;
     if (RegQueryValueEx(hRegKey, "LogFileName", NULL, &valtype,
-                        (LPBYTE) &buf, &buffersize) == ERROR_SUCCESS) {
+                        (LPBYTE)&buf, &buffersize) == ERROR_SUCCESS)
       STRCPY(m_logFilename, buf);
-    }
+
     RegCloseKey(hRegKey);
   }
 }
@@ -2333,7 +2381,7 @@ void VNCOptions::SaveGenOpt()
 void VNCOptions::BrowseLogFile()
 {
   OPENFILENAME ofn;
-  char filter[] = "Log files (*.log)\0*.log\0" \
+  char filter[] = "Log files (*.log)\0*.log\0"  \
                   "All files (*.*)\0*.*\0";
   char tname[_MAX_FNAME + _MAX_EXT];
 
@@ -2351,8 +2399,8 @@ void VNCOptions::BrowseLogFile()
   if (!GetSaveFileName(&ofn)) {
     DWORD err = CommDlgExtendedError();
     char msg[1024];
-    switch(err) {
-      case 0: // user cancelled
+    switch (err) {
+      case 0:  // user cancelled
         break;
       case FNERR_INVALIDFILENAME:
         STRCPY(msg, "Invalid filename");
@@ -2378,8 +2426,8 @@ void VNCOptions::setHistoryLimit(int newLimit)
   if (newLimit < oldLimit) {
     // Open the registry key for the connection history.
     HKEY hKey;
-    LONG result = RegOpenKeyEx(HKEY_CURRENT_USER, KEY_VNCVIEWER_HISTORY,
-                               0, KEY_ALL_ACCESS, &hKey);
+    LONG result = RegOpenKeyEx(HKEY_CURRENT_USER, KEY_VNCVIEWER_HISTORY, 0,
+                               KEY_ALL_ACCESS, &hKey);
     if (result != ERROR_SUCCESS)
       return;
 

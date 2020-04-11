@@ -3,6 +3,10 @@
 # chkconfig: - 91 35
 # description: Starts and stops the TurboVNC Server
 #
+### If you are using LDAP or another distributed authentication system, then
+### be sure to add any services needed for your distributed authentication
+### system to the Required-Start line below.
+#
 ### BEGIN INIT INFO
 # Provides: tvncserver
 # Required-Start: $syslog
@@ -36,10 +40,8 @@ fi
 
 unset VNCSERVERARGS
 VNCSERVERS=""
-if [ -f /etc/sysconfig/tvncservers ]; then
-    . /etc/sysconfig/tvncservers
-elif [ -f @CMAKE_INSTALL_FULL_SYSCONFDIR@/sysconfig/tvncservers ]; then
-    . @CMAKE_INSTALL_FULL_SYSCONFDIR@/sysconfig/tvncservers ]
+if [ -f @CMAKE_INSTALL_FULL_SYSCONFDIR@/sysconfig/tvncservers ]; then
+    . @CMAKE_INSTALL_FULL_SYSCONFDIR@/sysconfig/tvncservers
 fi
 
 LOCKDIR=/var/lock
@@ -114,7 +116,7 @@ stop() {
 reload() {
     # Walk the process list and shut down any TurboVNC sessions that aren't
     # specified in the tvncservers file.
-    for active in `ps uh -C Xvnc | grep @CMAKE_INSTALL_FULL_BINDIR@/Xvnc | awk '{ print $12,$16 }' | tr -d ':' | tr ' ' ':' | sed -e 's/(//' -e 's/)//'`
+    for active in `ps uh -C Xvnc | grep @CMAKE_INSTALL_FULL_BINDIR@/Xvnc | awk '{ print $12, $16 }' | tr -d ':' | tr ' ' ':' | sed -e 's/(//' -e 's/)//'`
     do
         skip=
         for display in ${VNCSERVERS}
@@ -166,4 +168,3 @@ case "$1" in
         echo $"Usage: $0 {start|stop|restart|reload|condrestart|status}"
         exit 1
 esac
-

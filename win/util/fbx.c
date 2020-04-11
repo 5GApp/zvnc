@@ -80,7 +80,7 @@ static char *lastError="No error";
 #define X_ShmAttach 1
 #endif
 
-#endif /* _WIN32 */
+#endif  /* _WIN32 */
 
 
 #ifdef INFAKER
@@ -89,9 +89,9 @@ typedef int (*_XCopyAreaType)(Display *, Drawable, Drawable, GC, int, int,
 	unsigned int, unsigned int, int, int);
 extern _XCopyAreaType __XCopyArea;
 
-#define XCopyArea(dpy, src, dst, gc, src_x, src_y, w, h, dest_x, dest_y) { \
-	if(!__XCopyArea) _throw("[FBX] ERROR: XCopyArea symbol not loaded"); \
-	__XCopyArea(dpy, src, dst, gc, src_x, src_y, w, h, dest_x, dest_y); \
+#define XCopyArea(dpy, src, dst, gc, src_x, src_y, w, h, dest_x, dest_y) {  \
+	if(!__XCopyArea) _throw("[FBX] ERROR: XCopyArea symbol not loaded");  \
+	__XCopyArea(dpy, src, dst, gc, src_x, src_y, w, h, dest_x, dest_y);  \
 }
 
 #endif
@@ -552,7 +552,7 @@ int fbx_flip(fbx_struct *fb, int x_, int y_, int width_, int height_)
 	return 0;
 
 	finally:
-	if(tmpbuf) free(tmpbuf);
+	free(tmpbuf);
 	return -1;
 }
 
@@ -647,7 +647,7 @@ int fbx_term(fbx_struct *fb)
 	}
 	if(fb->xi)
 	{
-		if(fb->xi->data && !fb->shm)
+		if(!fb->shm)
 		{
 			free(fb->xi->data);  fb->xi->data=NULL;
 		}

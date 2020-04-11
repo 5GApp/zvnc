@@ -1,4 +1,5 @@
 /* Copyright (C) 2012 Brian P. Hinz
+ * Copyright (C) 2018 D. R. Commander.  All Rights Reserved.
  *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,51 +23,45 @@ import javax.swing.filechooser.FileSystemView;
 
 import com.turbovnc.rfb.LogWriter;
 
-public class FileUtils {
+public final class FileUtils {
 
-  public static final String getHomeDir() {
+  public static String getHomeDir() {
     String homeDir = null;
     try {
-      String os = System.getProperty("os.name").toLowerCase();
-      try {
-        if (os.startsWith("windows")) {
-          // JRE prior to 1.5 cannot reliably determine USERPROFILE.
-          // Return user.home and hope it's right.
-          if (Integer.parseInt(System.getProperty("java.version").split("\\.")[1]) < 5) {
-            try {
-              homeDir = System.getProperty("user.home");
-            } catch (java.security.AccessControlException e) {
-              vlog.error("Cannot access user.home system property:");
-              vlog.error("  " + e.getMessage());
-            }
-          } else {
-            homeDir = System.getenv("USERPROFILE");
-          }
-        } else {
+      if (VncViewer.OS.startsWith("windows")) {
+        // JRE prior to 1.5 cannot reliably determine USERPROFILE.
+        // Return user.home and hope it's right.
+        if (VncViewer.JAVA_VERSION < 5) {
           try {
-            homeDir = FileSystemView.getFileSystemView().
-                      getDefaultDirectory().getCanonicalPath();
+            homeDir = System.getProperty("user.home");
           } catch (java.security.AccessControlException e) {
-            vlog.error("Cannot access system property:");
+            vlog.error("Cannot access user.home system property:");
             vlog.error("  " + e.getMessage());
           }
+        } else {
+          homeDir = System.getenv("USERPROFILE");
         }
-      } catch (java.lang.Exception e) {
-        e.printStackTrace();
+      } else {
+        try {
+          homeDir = FileSystemView.getFileSystemView().
+                    getDefaultDirectory().getCanonicalPath();
+        } catch (java.security.AccessControlException e) {
+          vlog.error("Cannot access system property:");
+          vlog.error("  " + e.getMessage());
+        }
       }
-    } catch (java.security.AccessControlException e) {
-      vlog.error("Cannot access os.name system property:");
-      vlog.error("  " + e.getMessage());
+    } catch (Exception e) {
+      e.printStackTrace();
     }
 
     return homeDir + getFileSeparator();
   }
 
-  public static final String getVncHomeDir() {
+  public static String getVncHomeDir() {
     return getHomeDir() + ".vnc" + getFileSeparator();
   }
 
-  public static final String getFileSeparator() {
+  public static String getFileSeparator() {
     String separator = null;
     try {
       separator = Character.toString(java.io.File.separatorChar);
@@ -77,5 +72,6 @@ public class FileUtils {
     return separator;
   }
 
+  private FileUtils() {}
   static LogWriter vlog = new LogWriter("FileUtils");
 }
