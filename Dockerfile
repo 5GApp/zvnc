@@ -34,7 +34,7 @@ RUN \
 
 RUN \
  mkdir /tmp/cloudvnc/xbuild && cd /tmp/cloudvnc/xbuild && \
- cmake ../ -DTVNC_BUILDJAVA=0 -DTVNC_USETLS=0 -DTVNC_BUILDNATIVE=0 && \
+ cmake ../ -DTVNC_USEPAM=0 -DTVNC_BUILDJAVA=0 -DTVNC_USETLS=0 -DTVNC_BUILDNATIVE=0 && \
  make -j 8 && make install
 
 RUN \
@@ -47,4 +47,4 @@ ENV HOME /root
 WORKDIR /opt/TurboVNC/
 
 # Define default command.
-CMD ["bash","-c","./bin/Xvnc -securitytypes none -nomt -alwaysshared -desktop AiWorkSpace -rfbport 5901 :1"]
+CMD ["bash","-c","./bin/Xvnc -securitytypes none -nomt -alwaysshared -desktop AiWorkSpace -rfbport 5901 -listen inet :1"]
