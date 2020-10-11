@@ -18,10 +18,6 @@ jobs:
     - name : list
       run: ls -al
     - name: build libjpeg-turbo
-      run: tar xvzf 2.0.4.tar.gz && cd libjpeg-turbo-2.0.4/ && mkdir -p build && cd build && cmake ../ -DWITH_JAVA=0 && make && make install 
-    - name: mkdir
-      run: mkdir build
-    - name: cmake
-      run: cd build && cmake ../ -DTVNC_USEPAM=0 -DTVNC_BUILDJAVA=0 -DTVNC_USETLS=0 -DTVNC_BUILDNATIVE=0
-    - name: make
-      run: make
+      run: tar xvzf 2.0.4.tar.gz && cd libjpeg-turbo-2.0.4/ && mkdir -p build && cd build && cmake ../ -DWITH_JAVA=0 && make && make install
+    - name: build zvnc
+      run: mkdir build && cd build && cmake ../ -DTVNC_USEPAM=0 -DTVNC_BUILDJAVA=0 -DTVNC_USETLS=0 -DTVNC_BUILDNATIVE=0 && make
