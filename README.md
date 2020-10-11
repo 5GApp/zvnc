@@ -6,6 +6,6 @@ a variant of TurboVNC enhancement on user-input and display
 
 ### License
 
-(The MIT License)
+(The GPLv2 License)
 
-Copyright (c) 2020 Tom Zhou(appnet.link@gmail.com)
+Copyright (c) 2015-present Tom Zhou(appnet.link@gmail.com)
