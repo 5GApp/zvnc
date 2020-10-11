@@ -1,5 +1,7 @@
-# zvnc
+# zvnc 
 TurboVNC enhancement on user-input and display
+
+![C/C++ CI](https://github.com/5GApp/zvnc/workflows/C/C++%20CI/badge.svg)
 
 ### Features
 * Support UTF-8 clipboard in combined with [peer-vnc](https://github.com/InstantWebP2P/peer-vnc) web VNC client.
