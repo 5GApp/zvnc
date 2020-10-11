@@ -14,9 +14,11 @@ jobs:
     - name: wget libjpeg-turbo
       uses: wei/wget@v1
       with:
-        args: -O /tmp/2.0.4.tar.gz https://github.com/libjpeg-turbo/libjpeg-turbo/archive/2.0.4.tar.gz
+        args: -O 2.0.4.tar.gz https://github.com/libjpeg-turbo/libjpeg-turbo/archive/2.0.4.tar.gz
+    - name : list
+      run: ls -al
     - name: build libjpeg-turbo
-      run: cd /tmp/ && tar xvzf 2.0.4.tar.gz && cd /tmp/libjpeg-turbo-2.0.4/ && mkdir -p build && cd build && cmake ../ -DWITH_JAVA=0 && make && make install 
+      run: tar xvzf 2.0.4.tar.gz && cd libjpeg-turbo-2.0.4/ && mkdir -p build && cd build && cmake ../ -DWITH_JAVA=0 && make && make install 
     - name: mkdir
       run: mkdir build
     - name: cmake
