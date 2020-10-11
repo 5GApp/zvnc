@@ -34,11 +34,15 @@
 %define server @TVNC_BUILDSERVER@
 
 # Path under which the Java viewer should be installed
+%if "%{java}" == "1"
 %define javadir @CMAKE_INSTALL_FULL_JAVADIR@
+%endif
 
 # Whether or not to include the TurboJPEG JNI JAR files (used when launching
 # the Java TurboVNC Viewer via Java Web Start)
+%if "%{java}" == "1"
 %define jnijars @TVNC_INCLUDEJNIJARS@
+%endif
 
 # Directory in which the TurboJPEG JNI JARs can be found
 %if "%{jnijars}" == "1"
@@ -169,10 +173,14 @@ TVNC_DOCDIR=@CMAKE_INSTALL_FULL_DOCDIR@
 if [ ! "$TVNC_DOCDIR" = "%{docdir}" ]; then
 	safedirmove $RPM_BUILD_ROOT/$TVNC_DOCDIR $RPM_BUILD_ROOT/%{docdir} $RPM_BUILD_ROOT/__tmpdoc
 fi
+%if "%{java}" == "1"
+%if "%{native}" == "1"
 TVNC_DATADIR=@CMAKE_INSTALL_FULL_DATADIR@
 if [ ! "$TVNC_DATADIR" = "%{datadir}" ]; then
 	safedirmove $RPM_BUILD_ROOT/$TVNC_DATADIR/icons $RPM_BUILD_ROOT/%{datadir}/icons $RPM_BUILD_ROOT/__tmpicons
 fi
+%endif
+%endif
 
 #-->%endif
 
@@ -188,6 +196,18 @@ Icon=turbovnc
 Type=Application
 Categories=Application;Utility;X-Red-Hat-Extra;
 EOF
+%endif
+
+%if "%{server}" == "1"
+%if "%{sysconfdir}" == "%{_sysconfdir}"
+mkdir -p %{buildroot}/%{sysconfdir}/polkit-1/localauthority/50-local.d
+cat > %{buildroot}/%{sysconfdir}/polkit-1/localauthority/50-local.d/45-turbovnc-gnome3.pkla << EOF
+[Eliminate GNOME 3 dialogs in TurboVNC]
+Identity=unix-user:*
+Action=org.freedesktop.color-manager.create-device;org.freedesktop.color-manager.create-profile;org.freedesktop.color-manager.delete-device;org.freedesktop.color-manager.delete-profile;org.freedesktop.color-manager.modify-device;org.freedesktop.color-manager.modify-profile;org.debian.pcsc-lite.access_pcsc;org.freedesktop.packagekit.system-sources-refresh
+ResultAny=no
+EOF
+%endif
 %endif
 
 %clean
@@ -235,6 +255,12 @@ fi
  %config(noreplace) %{sysconfdir}/sysconfig/tvncservers
  %config(noreplace) %{sysconfdir}/turbovncserver.conf
  %config(noreplace) %{sysconfdir}/turbovncserver-security.conf
+ %if "%{sysconfdir}" == "%{_sysconfdir}"
+  %dir %{sysconfdir}/polkit-1
+  %attr(0750,root,polkitd) %dir %{sysconfdir}/polkit-1/localauthority
+  %dir %{sysconfdir}/polkit-1/localauthority/50-local.d
+  %config %{sysconfdir}/polkit-1/localauthority/50-local.d/45-turbovnc-gnome3.pkla
+ %endif
 %endif
 
 %dir %{docdir}
@@ -257,11 +283,11 @@ fi
  %{bindir}/checkshmpixmaps
  %{bindir}/vncviewer
  %config(noreplace) /usr/share/applications/tvncviewer.desktop
- %{datadir}/icons/hicolor/128x128/apps/turbovnc.png
- %{datadir}/icons/hicolor/48x48/apps/turbovnc.png
- %{datadir}/icons/hicolor/16x16/apps/turbovnc.png
  %{mandir}/man1/vncviewer.1*
  %if "%{java}" == "1"
+  %{datadir}/icons/hicolor/128x128/apps/turbovnc.png
+  %{datadir}/icons/hicolor/48x48/apps/turbovnc.png
+  %{datadir}/icons/hicolor/16x16/apps/turbovnc.png
   %{javadir}/libturbojpeg.so
   %{javadir}/libturbovnchelper.so
  %endif
