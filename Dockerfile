@@ -1,7 +1,7 @@
 #
-# cloudVNC building Dockerfile
+# zVNC building Dockerfile
 #
-# https://github.com/InstantWebP2P/cloudVNC
+# https://github.com/5GApp/zvnc
 # Copyright (c) 2020 Tom Zhou<appnet.link@gmail.com>
 
 # Pull base image.
