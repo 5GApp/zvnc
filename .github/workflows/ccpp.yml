@@ -11,11 +11,11 @@ jobs:
     - uses: actions/checkout@v2
     - name: install dependency
       run: sudo apt-get -y update && sudo apt-get install -y libjpeg-turbo8-dev cmake gcc libx11-dev libxkbcommon-x11-dev libxshmfence-dev libxext-dev libxext6 x11proto-dev x11proto-xext-dev nx-x11proto-xext-dev libpam0g-dev libxcb-xkb1 libxkbcommon0 libxkbcommon-x11-0 x11-xkb-utils xkb-data xauth nasm intel2gas  
+    - name: list 
+      run: ls -al
     - name: mkdir
       run: mkdir build
-    - name: cd
-      run: cd build
     - name: cmake
-      run: cmake ../ -DTVNC_USEPAM=0 -DTVNC_BUILDJAVA=0 -DTVNC_USETLS=0 -DTVNC_BUILDNATIVE=0
+      run: cd build && cmake ../ -DTVNC_USEPAM=0 -DTVNC_BUILDJAVA=0 -DTVNC_USETLS=0 -DTVNC_BUILDNATIVE=0
     - name: make
       run: make
