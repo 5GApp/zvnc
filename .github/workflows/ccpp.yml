@@ -10,9 +10,13 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: install dependency
-      run: sudo apt-get -y update && sudo apt-get install -y libjpeg-turbo8-dev cmake gcc libx11-dev libxkbcommon-x11-dev libxshmfence-dev libxext-dev libxext6 x11proto-dev x11proto-xext-dev nx-x11proto-xext-dev libpam0g-dev libxcb-xkb1 libxkbcommon0 libxkbcommon-x11-0 x11-xkb-utils xkb-data xauth nasm intel2gas  
-    - name: list 
-      run: ls /usr/local/include/libjpegturbo 
+      run: sudo apt-get -y update && sudo apt-get install -y cmake gcc libx11-dev libxkbcommon-x11-dev libxshmfence-dev libxext-dev libxext6 x11proto-dev x11proto-xext-dev nx-x11proto-xext-dev libpam0g-dev libxcb-xkb1 libxkbcommon0 libxkbcommon-x11-0 x11-xkb-utils xkb-data xauth nasm intel2gas  
+    - name: wget libjpeg-turbo
+      uses: wei/wget@v1
+      with:
+        args: -O /tmp/2.0.4.tar.gz https://github.com/libjpeg-turbo/libjpeg-turbo/archive/2.0.4.tar.gz
+    - name: build libjpeg-turbo
+      run: cd /tmp/ && tar xvzf 2.0.4.tar.gz && cd /tmp/libjpeg-turbo-2.0.4/ && mkdir -p build && cd build && cmake ../ -DWITH_JAVA=0 && make && make install 
     - name: mkdir
       run: mkdir build
     - name: cmake
