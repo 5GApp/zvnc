@@ -4,6 +4,14 @@ TurboVNC enhancement on user-input and display
 ### Features
 * Support UTF-8 clipboard in combined with [peer-vnc](https://github.com/InstantWebP2P/peer-vnc) web VNC client.
 
+### Install
+
+* Build with Docker
+
+   `
+   ./apppkg
+   `
+
 ### License
 
 (The GPLv2 License)
