@@ -1,10 +1,8 @@
 # zvnc
-a variant of TurboVNC enhancement on user-input and display-output
+a variant of TurboVNC enhancement on user-input and display
 
 ### Features
-* UTF-8 clipboard in combined with [peer-vnc](https://github.com/InstantWebP2P/peer-vnc) web VNC client
-* Multiple input: keyboard, mice and TBD: multi-touch, gesture, voice, a/vr and hologram
-* Interactive video streaming as display-output: TBD
+* Support UTF-8 clipboard in combined with [peer-vnc](https://github.com/InstantWebP2P/peer-vnc) web VNC client.
 
 ### License
 
