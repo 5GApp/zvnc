@@ -23,7 +23,7 @@ RUN \
 # Add files.
 ADD  https://github.com/libjpeg-turbo/libjpeg-turbo/archive/2.0.4.tar.gz /tmp/
 
-COPY . /tmp/cloudvnc/
+COPY . /tmp/zvnc/
 
 # Start building.
 RUN \
@@ -33,7 +33,7 @@ RUN \
  make -j 8 && make install
 
 RUN \
- mkdir /tmp/cloudvnc/xbuild && cd /tmp/cloudvnc/xbuild && \
+ mkdir /tmp/zvnc/xbuild && cd /tmp/zvnc/xbuild && \
  cmake ../ -DTVNC_USEPAM=0 -DTVNC_BUILDJAVA=0 -DTVNC_USETLS=0 -DTVNC_BUILDNATIVE=0 && \
  make -j 8 && make install
 
