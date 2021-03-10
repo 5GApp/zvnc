@@ -47,4 +47,4 @@ ENV HOME /root
 WORKDIR /opt/TurboVNC/
 
 # Define default command.
-CMD ["bash","-c","./bin/Xvnc -securitytypes none -nomt -alwaysshared -desktop AiWorkSpace -rfbport 5901 -listen inet :1"]
+CMD ["bash","-c","/opt/TurboVNC/bin/Xvnc -securitytypes none -nomt -alwaysshared -desktop AiWorkSpace -rfbport 5901 -listen inet :1"]
