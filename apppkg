@@ -1,21 +1,27 @@
 #!/usr/bin/env bash
+vncver='3.0.0'
 
 # check docker image for packaging
 if [ $# == 0 ]; then
-  echo "Build Docker image as zvnc:2.2.x"
-  docker image build --compress -t zvnc:2.2.x -f ./Dockerfile .
+  echo "Build Docker image as zvnc:$vncver"
+  docker image build --compress -t zvnc:$vncver -f ./Dockerfile .
+  docker tag zvnc:$vncver docker.clounix.com/devtools/swenv/zvnc:$vncver
+  docker push docker.clounix.com/devtools/swenv/zvnc:$vncver
 fi
 
-if [ "$(docker images -q zvnc:2.2.x 2> /dev/null)" == "" ]; then
-  echo "Build Docker image as zvnc:2.2.x"
-  docker image build --compress -t zvnc:2.2.x -f ./Dockerfile .
+if [ "$(docker images -q zvnc:$vncver 2> /dev/null)" == "" ]; then
+  echo "Build Docker image as zvnc:$vncver"
+  docker image build --compress -t zvnc:$vncver -f ./Dockerfile .
+  docker tag zvnc:$vncver docker.clounix.com/devtools/swenv/zvnc:$vncver
+  docker push docker.clounix.com/devtools/swenv/zvnc:$vncver
+f
 fi
 
 # execute commands 
 if [ $# -ne 0 ]; then
   echo "$@ ..."
-  docker run -v $HOME:$HOME -v `pwd`:`pwd` -w `pwd` -i -t --rm --network host zvnc:2.2.x $@
+  docker run -v $HOME:$HOME -v `pwd`:`pwd` -w `pwd` -i -t --rm --network host zvnc:$vncver $@
 else
   echo "Start services ..."
-  docker run -v $HOME:$HOME -v `pwd`:`pwd` -w `pwd` -d --restart=on-failure --network host zvnc:2.2.x
+  docker run -v $HOME:$HOME -v `pwd`:`pwd` -w `pwd` -d --restart=on-failure --network host zvnc:$vncver
 fi

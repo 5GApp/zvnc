@@ -5,7 +5,7 @@
 # Copyright (c) 2020 Tom Zhou<appnet.link@gmail.com>
 
 # Pull base image.
-FROM ubuntu:18.04
+FROM ubuntu:20.04
 
 # Install.
 RUN \
