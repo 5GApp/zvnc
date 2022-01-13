@@ -5,15 +5,11 @@ vncver='3.0.0'
 if [ $# == 0 ]; then
   echo "Build Docker image as zvnc:$vncver"
   docker image build --compress -t zvnc:$vncver -f ./Dockerfile .
-  docker tag zvnc:$vncver docker.clounix.com/devtools/swenv/zvnc:$vncver
-  docker push docker.clounix.com/devtools/swenv/zvnc:$vncver
 fi
 
 if [ "$(docker images -q zvnc:$vncver 2> /dev/null)" == "" ]; then
   echo "Build Docker image as zvnc:$vncver"
   docker image build --compress -t zvnc:$vncver -f ./Dockerfile .
-  docker tag zvnc:$vncver docker.clounix.com/devtools/swenv/zvnc:$vncver
-  docker push docker.clounix.com/devtools/swenv/zvnc:$vncver
 f
 fi
 
